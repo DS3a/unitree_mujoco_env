@@ -36,6 +36,11 @@ target_link_libraries(stand_go2  unitree_sdk2)
 add_executable(stand_h1 stand/stand_h1.cpp)
 target_link_libraries(stand_h1  unitree_sdk2)
 
+add_executable(pd_controller pd_controller/pd_controller.cpp)
+target_link_libraries(pd_controller  unitree_sdk2)
+
+
+
 add_executable(jstest src/joystick/jstest.cc src/joystick/joystick.cc)
 
 set(CMAKE_BUILD_TYPE Release)

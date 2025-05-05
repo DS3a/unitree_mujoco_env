@@ -53,6 +53,22 @@ enum JointIndex {
 
 const int H1_NUM_MOTOR = 27;
 
+class Arm {
+public:
+    int shoulder_p_;
+    int shoulder_r_;
+    int shoulder_y_;
+    int elbow_;
+
+    Arm(int shoulder_p, int shoulder_r, int shoulder_y, int elbow) {
+        shoulder_p_ = shoulder_p;
+        shoulder_r_ = shoulder_r;
+        shoulder_y_ = shoulder_y;
+        elbow_ = elbow;
+    }
+};
+
+
 class Custom
 {
 public:
@@ -276,7 +292,7 @@ void Custom::LowCmdWrite()
         // this->hold_joint_position(JointIndex::kLeftAnkle, state_capture);
         // this->hold_joint_position(JointIndex::kRightAnkle, state_capture);
         state_capture = low_state;
-   } else if (runing_time > 9.0) {
+   } else if (runing_time < 11.0) {
         this->joint_position_control(JointIndex::kWaistYaw, 0);
         this->joint_position_control(JointIndex::kLeftHipRoll, 0.43);
         this->joint_position_control(JointIndex::kLeftHipYaw, 0.43);
@@ -296,12 +312,37 @@ void Custom::LowCmdWrite()
         this->joint_position_control(JointIndex::kRightShoulderPitch, 2.5);
         this->joint_position_control(JointIndex::kLeftShoulderPitch, 2.5);
 
-        // this->hold_joint_position(JointIndex::kRightShoulderRoll, state_capture);
-        // this->hold_joint_position(JointIndex::kLeftShoulderRoll, state_capture);
-        // this->hold_joint_position(JointIndex::kRightShoulderYaw, state_capture);
-        // this->hold_joint_position(JointIndex::kLeftShoulderYaw, state_capture);
+   } else if (runing_time < 20) {
+        // start crawling front with arms
+        // this->joint_torque_control(JointIndex::kLeftShoulderPitch, )
+        this->joint_position_control(JointIndex::kLeftElbow, 0);
+        this->joint_position_control(JointIndex::kRightElbow, 0);
+
+        this->hold_joint_position(JointIndex::kRightShoulderPitch, state_capture);
+        this->hold_joint_position(JointIndex::kLeftShoulderPitch, state_capture);
+        this->hold_joint_position(JointIndex::kRightShoulderRoll, state_capture);
+        this->hold_joint_position(JointIndex::kLeftShoulderRoll, state_capture);
+
+        this->joint_position_control(JointIndex::kRightShoulderYaw, 0.314);
+        this->joint_position_control(JointIndex::kLeftShoulderYaw, -0.314);
+        
+        state_capture = low_state;
+   } else if (runing_time < 26) {
+        this->joint_position_control(JointIndex::kLeftElbow, 0);
+        this->joint_position_control(JointIndex::kRightElbow, 0);
+        this->joint_position_control(JointIndex::kWaistYaw, 0);
+
+
+        this->hold_joint_position(JointIndex::kRightShoulderRoll, state_capture);
+        this->hold_joint_position(JointIndex::kLeftShoulderRoll, state_capture);
+        this->hold_joint_position(JointIndex::kRightShoulderYaw, state_capture);
+        this->hold_joint_position(JointIndex::kLeftShoulderYaw, state_capture);
+
+        this->joint_torque_control(JointIndex::kLeftShoulderPitch, -50);
+        this->joint_torque_control(JointIndex::kRightShoulderPitch, -50);
 
    }
+
 
     low_cmd.crc() = crc32_core((uint32_t *)&low_cmd, (sizeof(unitree_go::msg::dds_::LowCmd_) >> 2) - 1);
     lowcmd_publisher->Write(low_cmd);
