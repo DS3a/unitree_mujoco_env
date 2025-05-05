@@ -30,6 +30,12 @@ target_link_libraries(unitree_mujoco ${SIM_DEPENDENCIES})
 add_executable(test test/test_unitree_sdk2.cpp)
 target_link_libraries(test unitree_sdk2)
 
+add_executable(stand_go2 stand/stand_go2.cpp)
+target_link_libraries(stand_go2  unitree_sdk2)
+
+add_executable(stand_h1 stand/stand_h1.cpp)
+target_link_libraries(stand_h1  unitree_sdk2)
+
 add_executable(jstest src/joystick/jstest.cc src/joystick/joystick.cc)
 
 set(CMAKE_BUILD_TYPE Release)
