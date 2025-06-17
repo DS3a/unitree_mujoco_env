@@ -9,6 +9,8 @@
 #include <unitree/common/time/time_tool.hpp>
 #include <unitree/common/thread/thread.hpp>
 
+#include "pinocchio/multibody/sample-models.hpp"
+
 using namespace unitree::common;
 using namespace unitree::robot;
 

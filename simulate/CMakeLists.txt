@@ -11,6 +11,16 @@ find_package(mujoco REQUIRED)
 find_package(unitree_sdk2 REQUIRED)
 
 
+# Find Pinocchio using pkg-config
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(PINOCCHIO REQUIRED pinocchio)
+
+# Include directories and link libraries
+include_directories(${PINOCCHIO_INCLUDE_DIRS})
+link_directories(${PINOCCHIO_LIBRARY_DIRS})
+add_definitions(${PINOCCHIO_CFLAGS_OTHER})
+
+
 file(GLOB SIM_SRC
     src/joystick/joystick.cc
     src/mujoco/*.cc
@@ -38,7 +48,7 @@ target_link_libraries(stand_h1  unitree_sdk2)
 
 add_executable(pd_controller pd_controller/pd_controller.cpp)
 target_link_libraries(pd_controller  unitree_sdk2)
-
+target_link_libraries(pd_controller ${PINOCCHIO_LIBRARIES})
 
 
 add_executable(jstest src/joystick/jstest.cc src/joystick/joystick.cc)

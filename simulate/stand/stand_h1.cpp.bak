@@ -1,375 +1,383 @@
-#include <algorithm>
-#include <cmath>
-#include <memory>
-#include <mutex>
-#include <shared_mutex>
-
-// DDS
+#include <iostream>
+#include <stdio.h>
+#include <stdint.h>
+#include <math.h>
 #include <unitree/robot/channel/channel_publisher.hpp>
 #include <unitree/robot/channel/channel_subscriber.hpp>
-
-// IDL
-#include <unitree/idl/hg/LowCmd_.hpp>
-#include <unitree/idl/hg/LowState_.hpp>
-
-static const std::string HG_CMD_TOPIC = "rt/lowcmd";
-static const std::string HG_STATE_TOPIC = "rt/lowstate";
+#include <unitree/idl/go2/LowState_.hpp>
+#include <unitree/idl/go2/LowCmd_.hpp>
+#include <unitree/common/time/time_tool.hpp>
+#include <unitree/common/thread/thread.hpp>
 
 using namespace unitree::common;
 using namespace unitree::robot;
 
+#define TOPIC_LOWCMD "rt/lowcmd"
+#define TOPIC_LOWSTATE "rt/lowstate"
+
+constexpr double PosStopF = (2.146E+9f);
+constexpr double VelStopF = (16000.0f);
+#define PI 3.141591
+
+
+enum JointIndex {
+  // Right leg
+  kRightHipYaw = 8,
+  kRightHipRoll = 0,
+  kRightHipPitch = 1,
+  kRightKnee = 2,
+  kRightAnkle = 11,
+  // Left leg
+  kLeftHipYaw = 7,
+  kLeftHipRoll = 3,
+  kLeftHipPitch = 4,
+  kLeftKnee = 5,
+  kLeftAnkle = 10,
+
+  kWaistYaw = 6,
+
+  kNotUsedJoint = 9,
+
+  // Right arm
+  kRightShoulderPitch = 12,
+  kRightShoulderRoll = 13,
+  kRightShoulderYaw = 14,
+  kRightElbow = 15,
+  // Left arm
+  kLeftShoulderPitch = 16,
+  kLeftShoulderRoll = 17,
+  kLeftShoulderYaw = 18,
+  kLeftElbow = 19,
+
+};
+
 const int H1_NUM_MOTOR = 27;
 
-template <typename T>
-class DataBuffer {
- public:
-  void SetData(const T &newData) {
-    std::unique_lock<std::shared_mutex> lock(mutex);
-    data = std::make_shared<T>(newData);
-  }
+class Arm {
+public:
+    int shoulder_p_;
+    int shoulder_r_;
+    int shoulder_y_;
+    int elbow_;
 
-  std::shared_ptr<const T> GetData() {
-    std::shared_lock<std::shared_mutex> lock(mutex);
-    return data ? data : nullptr;
-  }
-
-  void Clear() {
-    std::unique_lock<std::shared_mutex> lock(mutex);
-    data = nullptr;
-  }
-
- private:
-  std::shared_ptr<T> data;
-  std::shared_mutex mutex;
-};
-
-struct ImuState {
-  std::array<float, 3> rpy = {};
-  std::array<float, 3> omega = {};
-};
-
-struct MotorCommand {
-  std::array<float, H1_NUM_MOTOR> q_target = {};
-  std::array<float, H1_NUM_MOTOR> dq_target = {};
-  std::array<float, H1_NUM_MOTOR> kp = {};
-  std::array<float, H1_NUM_MOTOR> kd = {};
-  std::array<float, H1_NUM_MOTOR> tau_ff = {};
-};
-
-struct MotorState {
-  std::array<float, H1_NUM_MOTOR> q = {};
-  std::array<float, H1_NUM_MOTOR> dq = {};
-};
-
-enum MotorType { GearboxS = 0, GearboxM = 1, GearboxL = 2 };
-
-std::array<MotorType, H1_NUM_MOTOR> H1MotorType{
-    // clang-format off
-    // legs
-    GearboxM, GearboxM, GearboxM, GearboxL, GearboxS, GearboxS,
-    GearboxM, GearboxM, GearboxM, GearboxL, GearboxS, GearboxS,
-    // waist
-    GearboxM,
-    // arms
-    GearboxS, GearboxS, GearboxS, GearboxS, GearboxS, GearboxS, GearboxS,
-    GearboxS, GearboxS, GearboxS, GearboxS, GearboxS, GearboxS, GearboxS
-    // clang-format on
-};
-
-enum PRorAB { PR = 0, AB = 1 };
-
-enum H1JointIndex {
-  // legs
-  LeftHipYaw = 0,
-  LeftHipPitch = 1,
-  LeftHipRoll = 2,
-  LeftKnee = 3,
-  LeftAnklePitch = 4,
-  LeftAnkleB = 4,
-  LeftAnkleRoll = 5,
-  LeftAnkleA = 5,
-  RightHipYaw = 6,
-  RightHipPitch = 7,
-  RightHipRoll = 8,
-  RightKnee = 9,
-  RightAnklePitch = 10,
-  RightAnkleB = 10,
-  RightAnkleRoll = 11,
-  RightAnkleA = 11,
-  // torso
-  WaistYaw = 12,
-  // arms
-  LeftShoulderPitch = 13,
-  LeftShoulderRoll = 14,
-  LeftShoulderYaw = 15,
-  LeftElbow = 16,
-  LeftWristRoll = 17,
-  LeftWristPitch = 18,
-  LeftWristYaw = 19,
-  RightShoulderPitch = 20,
-  RightShoulderRoll = 21,
-  RightShoulderYaw = 22,
-  RightElbow = 23,
-  RightWristRoll = 24,
-  RightWristPitch = 25,
-  RightWristYaw = 26
-};
-
-inline uint32_t Crc32Core(uint32_t *ptr, uint32_t len) {
-  uint32_t xbit = 0;
-  uint32_t data = 0;
-  uint32_t CRC32 = 0xFFFFFFFF;
-  const uint32_t dwPolynomial = 0x04c11db7;
-  for (uint32_t i = 0; i < len; i++) {
-    xbit = 1 << 31;
-    data = ptr[i];
-    for (uint32_t bits = 0; bits < 32; bits++) {
-      if (CRC32 & 0x80000000) {
-        CRC32 <<= 1;
-        CRC32 ^= dwPolynomial;
-      } else
-        CRC32 <<= 1;
-      if (data & xbit) CRC32 ^= dwPolynomial;
-
-      xbit >>= 1;
+    Arm(int shoulder_p, int shoulder_r, int shoulder_y, int elbow) {
+        shoulder_p_ = shoulder_p;
+        shoulder_r_ = shoulder_r;
+        shoulder_y_ = shoulder_y;
+        elbow_ = elbow;
     }
-  }
-  return CRC32;
 };
 
-float GetMotorKp(MotorType type) {
-  switch (type) {
-    case GearboxS:
-      return 80;
-    case GearboxM:
-      return 100;
-    case GearboxL:
-      return 200;
-    default:
-      return 0;
-  }
+
+class Custom
+{
+public:
+    Custom(){};
+    ~Custom(){};
+    void Init();
+    void joint_position_control(JointIndex, double, double);
+    void joint_torque_control(JointIndex, double);
+    void hold_joint_position(JointIndex, unitree_go::msg::dds_::LowState_);
+
+private:
+    void InitLowCmd();
+    void LowStateMessageHandler(const void *messages);
+    void LowCmdWrite();
+
+private:
+    double stand_up_joint_pos[27] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                                     0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                                     0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                                     0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+    double stand_down_joint_pos[27] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                                     0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                                     0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                                     0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+    double dt = 0.002;
+    double runing_time = 0.0;
+    double phase = 0.0;
+
+    unitree_go::msg::dds_::LowCmd_ low_cmd;     // default init
+    unitree_go::msg::dds_::LowState_ low_state; // default init
+
+    /*publisher*/
+    ChannelPublisherPtr<unitree_go::msg::dds_::LowCmd_> lowcmd_publisher;
+    /*subscriber*/
+    ChannelSubscriberPtr<unitree_go::msg::dds_::LowState_> lowstate_subscriber;
+
+    /*LowCmd write thread*/
+    ThreadPtr lowCmdWriteThreadPtr;
+};
+
+uint32_t crc32_core(uint32_t *ptr, uint32_t len)
+{
+    unsigned int xbit = 0;
+    unsigned int data = 0;
+    unsigned int CRC32 = 0xFFFFFFFF;
+    const unsigned int dwPolynomial = 0x04c11db7;
+
+    for (unsigned int i = 0; i < len; i++)
+    {
+        xbit = 1 << 31;
+        data = ptr[i];
+        for (unsigned int bits = 0; bits < 32; bits++)
+        {
+            if (CRC32 & 0x80000000)
+            {
+                CRC32 <<= 1;
+                CRC32 ^= dwPolynomial;
+            }
+            else
+            {
+                CRC32 <<= 1;
+            }
+
+            if (data & xbit)
+                CRC32 ^= dwPolynomial;
+            xbit >>= 1;
+        }
+    }
+
+    return CRC32;
 }
 
-float GetMotorKd(MotorType type) {
-  switch (type) {
-    case GearboxS:
-      return 2;
-    case GearboxM:
-      return 3;
-    case GearboxL:
-      return 5;
-    default:
-      return 0;
-  }
+void Custom::Init()
+{
+    InitLowCmd();
+    /*create publisher*/
+    lowcmd_publisher.reset(new ChannelPublisher<unitree_go::msg::dds_::LowCmd_>(TOPIC_LOWCMD));
+    lowcmd_publisher->InitChannel();
+
+    /*create subscriber*/
+    lowstate_subscriber.reset(new ChannelSubscriber<unitree_go::msg::dds_::LowState_>(TOPIC_LOWSTATE));
+    lowstate_subscriber->InitChannel(std::bind(&Custom::LowStateMessageHandler, this, std::placeholders::_1), 1);
+
+    /*loop publishing thread*/
+    lowCmdWriteThreadPtr = CreateRecurrentThreadEx("writebasiccmd", UT_CPU_ID_NONE, int(dt * 1000000), &Custom::LowCmdWrite, this);
+
+    // std::cout << "time, right_sh_yaw, left_sh_yaw\n";
 }
 
-class H1Example {
- private:
-  double time_;
-  double control_dt_;  // [2ms]
-  double duration_;    // [3 s]
-  PRorAB mode_;
-  uint8_t mode_machine_;
+void Custom::InitLowCmd()
+{
+    low_cmd.head()[0] = 0xFE;
+    low_cmd.head()[1] = 0xEF;
+    low_cmd.level_flag() = 0xFF;
+    low_cmd.gpio() = 0;
 
-  DataBuffer<MotorState> motor_state_buffer_;
-  DataBuffer<MotorCommand> motor_command_buffer_;
-  DataBuffer<ImuState> imu_state_buffer_;
-
-  ChannelPublisherPtr<unitree_hg::msg::dds_::LowCmd_> lowcmd_publisher_;
-  ChannelSubscriberPtr<unitree_hg::msg::dds_::LowState_> lowstate_subscriber_;
-  ThreadPtr command_writer_ptr_, control_thread_ptr_;
-
- public:
-  H1Example(std::string networkInterface)
-      : time_(0.0),
-        control_dt_(0.002),
-        duration_(3.0),
-        mode_(PR),
-        mode_machine_(0) {
-    // ChannelFactory::Instance()->Init(0, networkInterface);
-    ChannelFactory::Instance()->Init(1, "lo");
-
-    std::cout << "initializing the thingi thing\n";
-    // create publisher
-    lowcmd_publisher_.reset(
-        new ChannelPublisher<unitree_hg::msg::dds_::LowCmd_>(HG_CMD_TOPIC));
-    lowcmd_publisher_->InitChannel();
-
-    // create subscriber
-    lowstate_subscriber_.reset(
-        new ChannelSubscriber<unitree_hg::msg::dds_::LowState_>(
-            HG_STATE_TOPIC));
-    lowstate_subscriber_->InitChannel(
-        std::bind(&H1Example::LowStateHandler, this, std::placeholders::_1), 1);
-
-    // create threads
-    command_writer_ptr_ =
-        CreateRecurrentThreadEx("command_writer", UT_CPU_ID_NONE, 2000,
-                                &H1Example::LowCommandWriter, this);
-    control_thread_ptr_ = CreateRecurrentThreadEx(
-        "control", UT_CPU_ID_NONE, 2000, &H1Example::Control, this);
-    ReportRPY();
-  }
-
-  void ReportRPY() {
-    const std::shared_ptr<const ImuState> imu_tmp_ptr =
-        imu_state_buffer_.GetData();
-    if (imu_tmp_ptr) {
-      std::cout << "rpy: [" << imu_tmp_ptr->rpy.at(0) << ", "
-                << imu_tmp_ptr->rpy.at(1) << ", " << imu_tmp_ptr->rpy.at(2)
-                << "]" << std::endl;
+    for (int i = 0; i < H1_NUM_MOTOR; i++)
+    {
+        low_cmd.motor_cmd()[i].mode() = (0x01); // motor switch to servo (PMSM) mode
+        low_cmd.motor_cmd()[i].q() = (PosStopF);
+        low_cmd.motor_cmd()[i].kp() = (0);
+        low_cmd.motor_cmd()[i].dq() = (VelStopF);
+        low_cmd.motor_cmd()[i].kd() = (0);
+        low_cmd.motor_cmd()[i].tau() = (0);
     }
-  }
+}
 
-  void LowStateHandler(const void *message) {
-    unitree_hg::msg::dds_::LowState_ low_state =
-        *(const unitree_hg::msg::dds_::LowState_ *)message;
+void Custom::LowStateMessageHandler(const void *message)
+{
+    this->low_state = *(unitree_go::msg::dds_::LowState_ *)message;
 
-    if (low_state.crc() !=
-        Crc32Core((uint32_t *)&low_state,
-                  (sizeof(unitree_hg::msg::dds_::LowState_) >> 2) - 1)) {
-      std::cout << "low_state CRC Error" << std::endl;
-      return;
-    }
+    // std::cout << runing_time;
+    // std::cout << ", " << this->low_state.motor_state()[JointIndex::kRightShoulderYaw].q();
+    // std::cout << ", " << this->low_state.motor_state()[JointIndex::kLeftShoulderYaw].q() << std::endl;
+}
 
-    // get motor state
-    MotorState ms_tmp;
-    for (int i = 0; i < H1_NUM_MOTOR; ++i) {
-      ms_tmp.q.at(i) = low_state.motor_state()[i].q();
-      ms_tmp.dq.at(i) = low_state.motor_state()[i].dq();
+void Custom::joint_position_control(JointIndex j_id, double angle, double stiffness=100) {
+    low_cmd.motor_cmd()[j_id].q() = angle;
+    low_cmd.motor_cmd()[j_id].dq() = 0;
+    low_cmd.motor_cmd()[j_id].kp() = stiffness;
+    low_cmd.motor_cmd()[j_id].kd() = 2.5;
+    low_cmd.motor_cmd()[j_id].tau() = 0;
+}
 
-      if (low_state.motor_state()[i].motorstate())
-        std::cout << "[ERROR] motor " << i << " with code "
-                  << low_state.motor_state()[i].motorstate() << "\n";
-    }
-    motor_state_buffer_.SetData(ms_tmp);
+void Custom::joint_torque_control(JointIndex j_id, double torque) {
+    // low_cmd.motor_cmd()[j_id].q() = 0;
+    // low_cmd.motor_cmd()[j_id].dq() = 0;
+    low_cmd.motor_cmd()[j_id].kp() = 0;
+    low_cmd.motor_cmd()[j_id].kd() = 0;
+    low_cmd.motor_cmd()[j_id].tau() = torque;
+}
 
-    // get imu state
-    ImuState imu_tmp;
-    imu_tmp.omega = low_state.imu_state().gyroscope();
-    imu_tmp.rpy = low_state.imu_state().rpy();
-    imu_state_buffer_.SetData(imu_tmp);
+void Custom::hold_joint_position(JointIndex j_id, unitree_go::msg::dds_::LowState_ capture) {
+    low_cmd.motor_cmd()[j_id].q() = capture.motor_state()[j_id].q();
+    low_cmd.motor_cmd()[j_id].dq() = 0;
+    low_cmd.motor_cmd()[j_id].kp() = 100; // very stiff
+    low_cmd.motor_cmd()[j_id].kd() = 50.5;
+    low_cmd.motor_cmd()[j_id].tau() = 0;
+}
 
-    // update mode machine
-    if (mode_machine_ != low_state.mode_machine()) {
-      if (mode_machine_ == 0)
-        std::cout << "G1 type: " << unsigned(low_state.mode_machine())
-                  << std::endl;
-      mode_machine_ = low_state.mode_machine();
-    }
-  }
 
-  void LowCommandWriter() {
-    unitree_hg::msg::dds_::LowCmd_ dds_low_command;
-    dds_low_command.mode_pr() = mode_;
-    dds_low_command.mode_machine() = mode_machine_;
+void Custom::LowCmdWrite()
+{
 
-    const std::shared_ptr<const MotorCommand> mc =
-        motor_command_buffer_.GetData();
-    if (mc) {
-      for (size_t i = 0; i < H1_NUM_MOTOR; i++) {
-        dds_low_command.motor_cmd().at(i).mode() = 1;  // 1:Enable, 0:Disable
-        dds_low_command.motor_cmd().at(i).tau() = mc->tau_ff.at(i);
-        dds_low_command.motor_cmd().at(i).q() = mc->q_target.at(i);
-        dds_low_command.motor_cmd().at(i).dq() = mc->dq_target.at(i);
-        dds_low_command.motor_cmd().at(i).kp() = mc->kp.at(i);
-        dds_low_command.motor_cmd().at(i).kd() = mc->kd.at(i);
-      }
+    unitree_go::msg::dds_::LowState_ state_capture = low_state;
+    runing_time += dt;
+    if (runing_time < 2.0) {
+        this->joint_position_control(JointIndex::kLeftElbow, PI/2);
+        this->joint_position_control(JointIndex::kLeftShoulderPitch, 0);
+        this->joint_position_control(JointIndex::kLeftShoulderRoll, PI/3);
+        this->joint_position_control(JointIndex::kLeftShoulderYaw, 0);
+        this->joint_position_control(JointIndex::kRightElbow, PI/2);
+        this->joint_position_control(JointIndex::kRightShoulderPitch, 0);
+        this->joint_position_control(JointIndex::kRightShoulderRoll, -PI/3);
+        this->joint_position_control(JointIndex::kRightShoulderYaw, 0);
 
-      dds_low_command.crc() = Crc32Core((uint32_t *)&dds_low_command,
-                                        (sizeof(dds_low_command) >> 2) - 1);
-      lowcmd_publisher_->Write(dds_low_command);
-    }
-  }
+        this->joint_position_control(JointIndex::kLeftHipPitch, -PI/2);
+        this->joint_position_control(JointIndex::kLeftHipYaw, 0.43);
+        this->joint_position_control(JointIndex::kLeftKnee, 2.05);
 
-  void Control() {
-    ReportRPY();
+        this->joint_position_control(JointIndex::kRightHipPitch, -PI/2);
+        this->joint_position_control(JointIndex::kRightHipYaw, -0.43);
+        this->joint_position_control(JointIndex::kRightKnee, 2.05);
+        
+        this->joint_position_control(JointIndex::kWaistYaw, 0);
 
-    MotorCommand motor_command_tmp;
-    const std::shared_ptr<const MotorState> ms = motor_state_buffer_.GetData();
 
-    if (ms) {
-      time_ += control_dt_;
-      if (time_ < duration_ * 1) {
-        // [Stage 1]: set robot to zero posture
-        for (int i = 0; i < H1_NUM_MOTOR; ++i) {
-          double ratio = std::clamp(time_ / duration_, 0.0, 1.0);
+        state_capture = low_state;
+    } else if (runing_time < 3.0) {
 
-          double q_des = 0;
-          motor_command_tmp.tau_ff.at(i) = 0.0;
-          motor_command_tmp.q_target.at(i) =
-              (q_des - ms->q.at(i)) * ratio + ms->q.at(i);
-          motor_command_tmp.dq_target.at(i) = 0.0;
-          motor_command_tmp.kp.at(i) = GetMotorKp(H1MotorType[i]);
-          motor_command_tmp.kd.at(i) = GetMotorKd(H1MotorType[i]);
-        }
-      } else if (time_ < duration_ * 2) {
-        // [Stage 2]: swing ankle's PR
-        mode_ = PR;
-        double max_P = M_PI * 30.0 / 180.0;
-        double max_R = M_PI * 10.0 / 180.0;
-        double t = time_ - duration_ * 1;
-        double L_P_des = +max_P * std::sin(2.0 * M_PI * t);
-        double L_R_des = +max_R * std::sin(2.0 * M_PI * t);
-        double R_P_des = +max_P * std::sin(2.0 * M_PI * t);
-        double R_R_des = -max_R * std::sin(2.0 * M_PI * t);
+        // rotating
+        this->joint_position_control(JointIndex::kLeftElbow, 0);
+        this->joint_torque_control(JointIndex::kLeftShoulderPitch, 75);
+        // this->joint_position_control(JointIndex::kLeftShoulderRoll, 0);
+        // this->joint_position_control(JointIndex::kLeftShoulderYaw, PI/8);
+        this->joint_position_control(JointIndex::kRightElbow, 0);
+        this->joint_torque_control(JointIndex::kRightShoulderPitch, 75);
+        // this->joint_position_control(JointIndex::kRightShoulderRoll, 0);
+        // this->joint_position_control(JointIndex::kRightShoulderYaw, PI/8);
+        // this->joint_torque_control(JointIndex::kWaistYaw, 220);
+        // this->joint_torque_control(JointIndex)
 
-        for (int i = 0; i < H1_NUM_MOTOR; ++i) {
-          motor_command_tmp.tau_ff.at(i) = 0.0;
-          motor_command_tmp.q_target.at(i) = 0.0;
-          motor_command_tmp.dq_target.at(i) = 0.0;
-          motor_command_tmp.kp.at(i) = GetMotorKp(H1MotorType[i]);
-          motor_command_tmp.kd.at(i) = GetMotorKd(H1MotorType[i]);
-        }
-        motor_command_tmp.q_target.at(H1JointIndex::LeftElbow) = 1;
-        motor_command_tmp.q_target.at(H1JointIndex::LeftWristPitch) = 1;
-        motor_command_tmp.q_target.at(H1JointIndex::RightElbow) = 1;
-        motor_command_tmp.q_target.at(H1JointIndex::RightWristPitch) = 1;
+        // this->hold_joint_position(JointIndex::kRightShoulderRoll, state_capture);
+        // this->hold_joint_position(JointIndex::kLeftShoulderRoll, state_capture);
+        this->hold_joint_position(JointIndex::kRightShoulderYaw, state_capture);
+        this->hold_joint_position(JointIndex::kLeftShoulderYaw, state_capture);
+
+
+        state_capture = low_state;
+
+    } else if (runing_time < 8.0) {
+        this->joint_position_control(JointIndex::kRightShoulderPitch, 2.5);
+        this->joint_position_control(JointIndex::kLeftShoulderPitch, 2.5);
+        // joint_position_control(kRightShoulderPitch, low_state.motor_state()[kRightShoulderPitch].q());
+
+        this->hold_joint_position(JointIndex::kRightShoulderRoll, state_capture);
+        this->hold_joint_position(JointIndex::kLeftShoulderRoll, state_capture);
+        // this->joint_torque_control(JointIndex::kRightShoulderYaw, -5);
+        // this->joint_torque_control(JointIndex::kLeftShoulderYaw, -5);
+
+        this->joint_position_control(kLeftElbow, PI/6);
+        this->joint_position_control(kRightElbow, PI/6);
+
+        state_capture = low_state;
+   } else if (runing_time < 9.0) {
+    // start planting the feet
+        this->joint_position_control(JointIndex::kLeftHipRoll, 0.43);
+        this->joint_position_control(JointIndex::kLeftHipYaw, 0.43);
+
+        this->joint_position_control(JointIndex::kRightHipRoll, -0.43);
+        this->joint_position_control(JointIndex::kRightHipYaw, -0.43);
+
+        this->joint_position_control(JointIndex::kRightKnee, 2.05);
+        this->joint_position_control(JointIndex::kLeftKnee, 2.05);
+
+        this->joint_position_control(JointIndex::kWaistYaw, 0);
+
+        this->joint_torque_control(JointIndex::kLeftHipPitch, 24);
+        this->joint_torque_control(JointIndex::kRightHipPitch, 24);
+
+        // this->hold_joint_position(JointIndex::kLeftAnkle, state_capture);
+        // this->hold_joint_position(JointIndex::kRightAnkle, state_capture);
+        state_capture = low_state;
+   } else if (runing_time < 11.0) {
+        this->joint_position_control(JointIndex::kWaistYaw, 0);
+        this->joint_position_control(JointIndex::kLeftHipRoll, 0.43);
+        this->joint_position_control(JointIndex::kLeftHipYaw, 0.43);
+
+        this->joint_position_control(JointIndex::kRightHipRoll, -0.43);
+        this->joint_position_control(JointIndex::kRightHipYaw, -0.43);
+
+
+        this->joint_position_control(JointIndex::kLeftKnee, 2.05);
+        this->joint_position_control(JointIndex::kRightKnee, 2.05);
+        
+        this->joint_torque_control(JointIndex::kRightHipPitch, 80);
+        this->joint_torque_control(JointIndex::kLeftHipPitch, 80);
+        
+        // this->joint_torque_control(JointIndex::kRightAnkle, -10);
+        // this->joint_torque_control(JointIndex::kLeftAnkle, -10);
+        this->joint_position_control(JointIndex::kRightShoulderPitch, 2.5);
+        this->joint_position_control(JointIndex::kLeftShoulderPitch, 2.5);
+
+   } else if (runing_time < 20) {
+        // start crawling front with arms
+        // this->joint_torque_control(JointIndex::kLeftShoulderPitch, )
+        this->joint_position_control(JointIndex::kLeftElbow, 0);
+        this->joint_position_control(JointIndex::kRightElbow, 0);
+
+        this->joint_position_control(JointIndex::kLeftHipRoll, 0.43);
+        this->joint_position_control(JointIndex::kLeftHipYaw, 0.43);
+
+        this->joint_position_control(JointIndex::kRightHipRoll, -0.43);
+        this->joint_position_control(JointIndex::kRightHipYaw, -0.43);
+
+
  
-        // motor_command_tmp.q_target.at(LeftAnklePitch) = L_P_des;
-        // motor_command_tmp.q_target.at(LeftAnkleRoll) = L_R_des;
-        // motor_command_tmp.q_target.at(RightAnklePitch) = R_P_des;
-        // motor_command_tmp.q_target.at(RightAnkleRoll) = R_R_des;
-      } else {
-        // [Stage 3]: swing ankle's AB
-        mode_ = AB;
-        double max_A = M_PI * 30.0 / 180.0;
-        double max_B = M_PI * 10.0 / 180.0;
-        double t = time_ - duration_ * 2;
-        double L_A_des = +max_A * std::sin(M_PI * t);
-        double L_B_des = +max_B * std::sin(M_PI * t + M_PI);
-        double R_A_des = -max_A * std::sin(M_PI * t);
-        double R_B_des = -max_B * std::sin(M_PI * t + M_PI);
+        this->hold_joint_position(JointIndex::kRightShoulderPitch, state_capture);
+        this->hold_joint_position(JointIndex::kLeftShoulderPitch, state_capture);
+        this->hold_joint_position(JointIndex::kRightShoulderRoll, state_capture);
+        this->hold_joint_position(JointIndex::kLeftShoulderRoll, state_capture);
 
-        for (int i = 0; i < H1_NUM_MOTOR; ++i) {
-          motor_command_tmp.tau_ff.at(i) = 0.0;
-          motor_command_tmp.q_target.at(i) = 0.0;
-          motor_command_tmp.dq_target.at(i) = 0.0;
-          motor_command_tmp.kp.at(i) = GetMotorKp(H1MotorType[i]);
-          motor_command_tmp.kd.at(i) = GetMotorKd(H1MotorType[i]);
-        }
+        this->joint_position_control(JointIndex::kRightShoulderYaw, 0.314);
+        this->joint_position_control(JointIndex::kLeftShoulderYaw, -0.314);
+        
+        state_capture = low_state;
+   } else if (runing_time < 26) {
+        this->joint_position_control(JointIndex::kLeftElbow, 0);
+        this->joint_position_control(JointIndex::kRightElbow, 0);
+        this->joint_position_control(JointIndex::kWaistYaw, 0);
 
-        motor_command_tmp.q_target.at(H1JointIndex::LeftElbow) = 1;
-        motor_command_tmp.q_target.at(H1JointIndex::LeftWristPitch) = 1;
-        motor_command_tmp.q_target.at(H1JointIndex::RightElbow) = 1;
-        motor_command_tmp.q_target.at(H1JointIndex::RightWristPitch) = 1;
-      }
+        this->joint_position_control(JointIndex::kRightHipPitch, -PI);
+        this->joint_position_control(JointIndex::kLeftHipPitch, -PI);
 
-      motor_command_buffer_.SetData(motor_command_tmp);
+
+        this->hold_joint_position(JointIndex::kRightShoulderRoll, state_capture);
+        this->hold_joint_position(JointIndex::kLeftShoulderRoll, state_capture);
+        this->hold_joint_position(JointIndex::kRightShoulderYaw, state_capture);
+        this->hold_joint_position(JointIndex::kLeftShoulderYaw, state_capture);
+
+        // this->joint_torque_control(JointIndex::kLeftShoulderPitch, -50);
+        // this->joint_torque_control(JointIndex::kRightShoulderPitch, -50);
+
+   }
+
+
+    low_cmd.crc() = crc32_core((uint32_t *)&low_cmd, (sizeof(unitree_go::msg::dds_::LowCmd_) >> 2) - 1);
+    lowcmd_publisher->Write(low_cmd);
+}
+
+int main(int argc, const char **argv)
+{
+    if (argc < 2)
+    {
+        ChannelFactory::Instance()->Init(1, "lo");
     }
-  }
-};
+    else
+    {
+        ChannelFactory::Instance()->Init(0, argv[1]);
+    }
+    // std::cout << "Press enter to start";
+    std::cin.get();
+    Custom custom;
+    custom.Init();
 
-int main(int argc, char const *argv[]) {
-  if (argc < 2) {
-    std::cout << "Usage: h1_27dof_example network_interface_name" << std::endl;
-    exit(0);
-  }
-  std::string networkInterface = argv[1];
-  
-  H1Example custom(networkInterface);
+    while (1)
+    {
+        sleep(10);
+    }
 
-  while (true) sleep(10);
-
-  return 0;
+    return 0;
 }
