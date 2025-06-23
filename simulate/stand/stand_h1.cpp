@@ -216,7 +216,7 @@ void Custom::LowCmdWrite()
     for (int i = 0; i < H1_NUM_MOTOR; i++) {
             low_cmd.motor_cmd()[i].q() = phase * stand_up_joint_pos[i] + (1 - phase) * stand_down_joint_pos[i];
             low_cmd.motor_cmd()[i].dq() = 0;
-            low_cmd.motor_cmd()[i].kp() = 15;
+            low_cmd.motor_cmd()[i].kp() = 30;
             low_cmd.motor_cmd()[i].kd() = 3.5;
             low_cmd.motor_cmd()[i].tau() = 0;
     }
