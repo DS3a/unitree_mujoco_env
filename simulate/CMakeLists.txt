@@ -20,6 +20,9 @@ include_directories(${PINOCCHIO_INCLUDE_DIRS})
 link_directories(${PINOCCHIO_LIBRARY_DIRS})
 add_definitions(${PINOCCHIO_CFLAGS_OTHER})
 
+add_subdirectory(../osqp osqp-build)
+
+
 
 file(GLOB SIM_SRC
     src/joystick/joystick.cc
@@ -44,8 +47,10 @@ add_executable(stand_go2 stand/stand_go2.cpp)
 target_link_libraries(stand_go2  unitree_sdk2)
 
 add_executable(stand_h1 stand/stand_h1.cpp)
+target_link_libraries(stand_h1 osqp-cpp)
 target_link_libraries(stand_h1  unitree_sdk2)
 target_link_libraries(stand_h1 ${PINOCCHIO_LIBRARIES})
+
 
 add_executable(pd_controller pd_controller/pd_controller.cpp)
 target_link_libraries(pd_controller  unitree_sdk2)
