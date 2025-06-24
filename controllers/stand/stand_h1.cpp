@@ -17,7 +17,8 @@
 #include "pinocchio/algorithm/kinematics.hpp"
 #include "pinocchio/algorithm/geometry.hpp"
 
-#include "osqp++.h"
+#include "Array.hh"
+#include "QuadProg++.hh"
 
 using namespace unitree::common;
 using namespace unitree::robot;
