@@ -17,6 +17,7 @@
 #include "pinocchio/algorithm/kinematics.hpp"
 #include "pinocchio/algorithm/geometry.hpp"
 
+#include "osqp++.h"
 
 using namespace unitree::common;
 using namespace unitree::robot;
@@ -78,7 +79,6 @@ public:
     void Init();
     void joint_position_control(JointIndex, double, double);
     void joint_torque_control(JointIndex, double);
-    void hold_joint_position(JointIndex, unitree_go::msg::dds_::LowState_);
 
 private:
     void InitLowCmd();
@@ -198,25 +198,15 @@ void Custom::joint_torque_control(JointIndex j_id, double torque) {
     low_cmd.motor_cmd()[j_id].tau() = torque;
 }
 
-void Custom::hold_joint_position(JointIndex j_id, unitree_go::msg::dds_::LowState_ capture) {
-    low_cmd.motor_cmd()[j_id].q() = capture.motor_state()[j_id].q();
-    low_cmd.motor_cmd()[j_id].dq() = 0;
-    low_cmd.motor_cmd()[j_id].kp() = 100; // very stiff
-    low_cmd.motor_cmd()[j_id].kd() = 50.5;
-    low_cmd.motor_cmd()[j_id].tau() = 0;
-}
-
-
 void Custom::LowCmdWrite()
 {
-
-    unitree_go::msg::dds_::LowState_ state_capture = low_state;
     
+    // The control loop runs here
     float phase = 1.0;
     for (int i = 0; i < H1_NUM_MOTOR; i++) {
             low_cmd.motor_cmd()[i].q() = phase * stand_up_joint_pos[i] + (1 - phase) * stand_down_joint_pos[i];
             low_cmd.motor_cmd()[i].dq() = 0;
-            low_cmd.motor_cmd()[i].kp() = 30;
+            low_cmd.motor_cmd()[i].kp() = 100;
             low_cmd.motor_cmd()[i].kd() = 3.5;
             low_cmd.motor_cmd()[i].tau() = 0;
     }
