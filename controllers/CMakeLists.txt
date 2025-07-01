@@ -22,7 +22,8 @@ add_definitions(${PINOCCHIO_CFLAGS_OTHER})
 
 # add_subdirectory(../osqp osqp-build)
 # add_subdirectory(../QuadProgpp quadprogpp-build)
-add_subdirectory(whole_body_roller)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/whole_body_roller)
+# find_package(whole_body_roller REQUIRED PATHS ${CMAKE_CURRENT_SOURCE_DIR}/../whole_body_roller)
 
 file(GLOB SIM_SRC
     src/joystick/joystick.cc
@@ -49,6 +50,7 @@ target_link_libraries(stand_go2 unitree_sdk2)
 add_executable(stand_h1 stand/stand_h1.cpp)
 target_link_libraries(stand_h1 quadprogpp)
 target_link_libraries(stand_h1  unitree_sdk2)
+target_link_libraries(stand_h1 whole_body_roller)
 target_link_libraries(stand_h1 ${PINOCCHIO_LIBRARIES})
 
 add_executable(pd_controller pd_controller/pd_controller.cpp)

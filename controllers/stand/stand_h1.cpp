@@ -20,7 +20,10 @@
 #include "Array.hh"
 #include "QuadProg++.hh"
 
-#include "../whole_body_roller/include/constraint.hpp"
+// #include "../whole_body_roller/include/constraint.hpp"
+#include "constraint.hpp"
+#include "control_decision_variables.hpp"
+
 
 using namespace unitree::common;
 using namespace unitree::robot;
@@ -209,7 +212,7 @@ void Custom::LowCmdWrite()
     for (int i = 0; i < H1_NUM_MOTOR; i++) {
             low_cmd.motor_cmd()[i].q() = phase * stand_up_joint_pos[i] + (1 - phase) * stand_down_joint_pos[i];
             low_cmd.motor_cmd()[i].dq() = 0;
-            low_cmd.motor_cmd()[i].kp() = 100;
+            low_cmd.motor_cmd()[i].kp() = 20;
             low_cmd.motor_cmd()[i].kd() = 3.5;
             low_cmd.motor_cmd()[i].tau() = 0;
     }
