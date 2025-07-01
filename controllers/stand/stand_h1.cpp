@@ -17,7 +17,10 @@
 #include "pinocchio/algorithm/kinematics.hpp"
 #include "pinocchio/algorithm/geometry.hpp"
 
-#include "osqp++.h"
+#include "Array.hh"
+#include "QuadProg++.hh"
+
+#include "../whole_body_roller/include/constraint.hpp"
 
 using namespace unitree::common;
 using namespace unitree::robot;
