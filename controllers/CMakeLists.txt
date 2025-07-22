@@ -9,14 +9,19 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 list(APPEND CMAKE_PREFIX_PATH "/opt/unitree_robotics/lib/cmake")
 find_package(mujoco REQUIRED)
 find_package(unitree_sdk2 REQUIRED)
-
+find_package(Eigen3 REQUIRED)
 
 # Find Pinocchio using pkg-config
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(PINOCCHIO REQUIRED pinocchio)
 
 # Include directories and link libraries
-include_directories(${PINOCCHIO_INCLUDE_DIRS})
+include_directories(
+    ${PINOCCHIO_INCLUDE_DIRS}
+    ${EIGEN3_INCLUDE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/whole_body_roller/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/whole_body_roller/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/helpers)
 link_directories(${PINOCCHIO_LIBRARY_DIRS})
 add_definitions(${PINOCCHIO_CFLAGS_OTHER})
 
@@ -35,8 +40,22 @@ set(SIM_DEPENDENCIES
     mujoco::mujoco
     glfw
     yaml-cpp
-    unitree_sdk2)
+    unitree_sdk2
+    ${PINOCCHIO_LIBRARIES})
 
+add_executable(wbc_simulation wbc_simulation/wbc_simulation.cpp)
+target_link_libraries(wbc_simulation
+    PRIVATE
+    whole_body_roller
+    ${PINOCCHIO_LIBRARIES}
+    Eigen3::Eigen
+    # Unitree libs, z.B.:
+    unitree_sdk2  # Beispielname, ersetze mit dem richtigen Libnamen
+    pthread
+    mujoco::mujoco
+    glfw
+    yaml-cpp
+)
 
 add_executable(unitree_mujoco ${SIM_SRC} src/main.cc)
 target_link_libraries(unitree_mujoco ${SIM_DEPENDENCIES})
