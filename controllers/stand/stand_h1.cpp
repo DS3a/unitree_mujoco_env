@@ -21,6 +21,11 @@
 #include "QuadProg++.hh"
 
 #include "../whole_body_roller/include/constraint.hpp"
+#include <Eigen/Dense>
+#include "../whole_body_roller/include/roller.hpp"
+#include "../whole_body_roller/include/dynamics.hpp"
+#include "../whole_body_roller/include/task_space_constraints/frame_acceleration.hpp"
+#include "../whole_body_roller/include/pose_estimator.hpp"
 
 using namespace unitree::common;
 using namespace unitree::robot;
@@ -76,6 +81,15 @@ public:
         pinocchio::urdf::buildModel(model_urdf_path, *(this->model));
         this->data = std::make_shared<pinocchio::Data>(*this->model);
 
+        // --- Initialize WBC components ---
+        // Initialize control decision variables (nv = velocity variables, nc = contact points)
+
+        // Initialize Roller (main WBC controller)
+        roller = std::make_shared<whole_body_roller::Roller>(dec_v, dynamics);
+        
+        // Initialize pose estimator for floating base
+        pose_estimator = std::make_unique<FloatingBasePoseEstimator>(0.2f, 0.2f); // acc_alpha, vel_alpha
+
         // std::cout << "Model loaded successfully!" << std::endl;
     };
     ~Custom(){};
@@ -111,6 +125,12 @@ private:
 
     std::shared_ptr<pinocchio::Model> model;
     std::shared_ptr<pinocchio::Data> data;
+
+    // --- WBC components ---
+    std::shared_ptr<whole_body_roller::ControlDecisionVariables> dec_v;
+    std::shared_ptr<whole_body_roller::Dynamics> dynamics;
+    std::shared_ptr<whole_body_roller::Roller> roller;
+    std::unique_ptr<FloatingBasePoseEstimator> pose_estimator;
 };
 
 uint32_t crc32_core(uint32_t *ptr, uint32_t len)
@@ -203,15 +223,78 @@ void Custom::joint_torque_control(JointIndex j_id, double torque) {
 
 void Custom::LowCmdWrite()
 {
+    // --- Step 1: Update pose estimation for floating base ---
+    static double current_time = 0.0;
+    pose_estimator->update(current_time);
+    current_time += dt;
     
-    // The control loop runs here
-    float phase = 1.0;
-    for (int i = 0; i < H1_NUM_MOTOR; i++) {
-            low_cmd.motor_cmd()[i].q() = phase * stand_up_joint_pos[i] + (1 - phase) * stand_down_joint_pos[i];
+    // --- Step 2: Read joint states from low_state ---
+    Eigen::VectorXd q(model->nq);   // Configuration vector (floating base + joints)
+    Eigen::VectorXd dq(model->nv);  // Velocity vector (floating base + joints)
+    
+    // --- Step 3: Get floating base pose from pose estimator ---
+    auto base_pos = pose_estimator->getPosition();      // [x, y, z]
+    auto base_quat = pose_estimator->getOrientation();  // [w, x, y, z]
+    auto base_lin_vel = pose_estimator->getLinearVelocity();  // [vx, vy, vz]
+    auto base_ang_vel = pose_estimator->getAngularVelocity(); // [wx, wy, wz]
+    
+    // --- Step 4: Fill floating base states (first 7 elements for pose, next 6 for velocity) ---
+    // Position [x, y, z]
+    q[0] = base_pos[0]; q[1] = base_pos[1]; q[2] = base_pos[2];
+    // Orientation [qw, qx, qy, qz]
+    q[3] = base_quat[0]; q[4] = base_quat[1]; q[5] = base_quat[2]; q[6] = base_quat[3];
+    
+    // Linear velocity [vx, vy, vz]
+    dq[0] = base_lin_vel[0]; dq[1] = base_lin_vel[1]; dq[2] = base_lin_vel[2];
+    // Angular velocity [wx, wy, wz]
+    dq[3] = base_ang_vel[0]; dq[4] = base_ang_vel[1]; dq[5] = base_ang_vel[2];
+    
+    // --- Step 5: Fill joint states (starting from index 7 for q, index 6 for dq) ---
+    // Assuming first 27 joints are actuated, adjust as needed
+    for (int i = 0; i < 27; ++i) {
+        q[i + 7] = low_state.motor_state()[i].q();  // +7 for floating base (3 pos + 4 quat)
+        dq[i + 6] = low_state.motor_state()[i].dq(); // +6 for floating base (3 lin vel + 3 ang vel)
+    }
+    
+    // --- Step 6: Update joint states in dynamics model ---
+    dynamics->update_joint_states(q, dq);
+    
+    // --- TODO Step 7: Set task-space goals (modify setpoints in constraint handlers) ---
+
+    
+    // --- Step 8: Solve QP to get joint torques ---
+    bool qp_success = roller->step(); // This calls solve_qp internally
+    
+    if (!qp_success) {
+        std::cout << "QP solve failed! Using fallback control." << std::endl;
+        // Fallback to simple position control if QP fails
+        for (int i = 0; i < H1_NUM_MOTOR; i++) {
+            low_cmd.motor_cmd()[i].q() = stand_up_joint_pos[i];
             low_cmd.motor_cmd()[i].dq() = 0;
             low_cmd.motor_cmd()[i].kp() = 100;
             low_cmd.motor_cmd()[i].kd() = 3.5;
             low_cmd.motor_cmd()[i].tau() = 0;
+        }
+    } else {
+        // --- Step 9: Write computed torques to low_cmd ---
+        // dec_v->tau is a shared_ptr<Eigen::VectorXd> of size nv-6 (floating base not actuated)
+        for (int i = 0; i < dec_v->tau->size(); ++i) {
+            low_cmd.motor_cmd()[i].tau() = (*(dec_v->tau))[i];
+            // Set position/velocity gains to zero for pure torque control
+            low_cmd.motor_cmd()[i].q() = PosStopF;
+            low_cmd.motor_cmd()[i].dq() = VelStopF;
+            low_cmd.motor_cmd()[i].kp() = 0;
+            low_cmd.motor_cmd()[i].kd() = 0;
+        }
+        
+        // Set remaining motors to zero torque (if any)
+        for (int i = dec_v->tau->size(); i < H1_NUM_MOTOR; ++i) {
+            low_cmd.motor_cmd()[i].tau() = 0;
+            low_cmd.motor_cmd()[i].q() = PosStopF;
+            low_cmd.motor_cmd()[i].dq() = VelStopF;
+            low_cmd.motor_cmd()[i].kp() = 0;
+            low_cmd.motor_cmd()[i].kd() = 0;
+        }
     }
 
     low_cmd.crc() = crc32_core((uint32_t *)&low_cmd, (sizeof(unitree_go::msg::dds_::LowCmd_) >> 2) - 1);
