@@ -90,6 +90,30 @@ public:
         // Initialize pose estimator for floating base
         pose_estimator = std::make_unique<FloatingBasePoseEstimator>(0.2f, 0.2f); // acc_alpha, vel_alpha
 
+        // Here: keep both feet stationary  
+        right_foot_constraint = std::make_shared<whole_body_roller::FrameAccelerationConstraint>(dynamics, "right_ankle_link");
+        roller->add_constraint(right_foot_constraint->constraint, right_foot_constraint);
+        
+        left_foot_constraint = std::make_shared<whole_body_roller::FrameAccelerationConstraint>(dynamics, "left_ankle_link");
+        roller->add_constraint(left_foot_constraint->constraint, left_foot_constraint);
+        
+        // Initialize additional constraint handlers for different tasks (here we only keep the double foot standing task)
+        // Torso control - using "torso_link" from H1 URDF
+        torso_constraint = std::make_shared<whole_body_roller::FrameAccelerationConstraint>(dynamics, "torso_link");
+        roller->add_constraint(torso_constraint->constraint, torso_constraint);
+        
+        // Center of mass control - using "pelvis" as COM reference frame
+        com_constraint = std::make_shared<whole_body_roller::FrameAccelerationConstraint>(dynamics, "pelvis");
+        roller->add_constraint(com_constraint->constraint, com_constraint);
+        
+        // Right arm control - using "right_elbow_link" for arm end-effector
+        right_arm_constraint = std::make_shared<whole_body_roller::FrameAccelerationConstraint>(dynamics, "right_elbow_link");
+        roller->add_constraint(right_arm_constraint->constraint, right_arm_constraint);
+        
+        // Left arm control - using "left_elbow_link" for arm end-effector
+        left_arm_constraint = std::make_shared<whole_body_roller::FrameAccelerationConstraint>(dynamics, "left_elbow_link");
+        roller->add_constraint(left_arm_constraint->constraint, left_arm_constraint);
+
         // std::cout << "Model loaded successfully!" << std::endl;
     };
     ~Custom(){};
@@ -130,6 +154,15 @@ private:
     std::shared_ptr<whole_body_roller::ControlDecisionVariables> dec_v;
     std::shared_ptr<whole_body_roller::Dynamics> dynamics;
     std::shared_ptr<whole_body_roller::Roller> roller;
+    std::shared_ptr<whole_body_roller::FrameAccelerationConstraint> right_foot_constraint;
+    std::shared_ptr<whole_body_roller::FrameAccelerationConstraint> left_foot_constraint;
+    
+    // TODO: Additional constraint handlers for different tasks 
+    std::shared_ptr<whole_body_roller::FrameAccelerationConstraint> torso_constraint;
+    std::shared_ptr<whole_body_roller::FrameAccelerationConstraint> com_constraint;
+    std::shared_ptr<whole_body_roller::FrameAccelerationConstraint> right_arm_constraint;
+    std::shared_ptr<whole_body_roller::FrameAccelerationConstraint> left_arm_constraint;
+    
     std::unique_ptr<FloatingBasePoseEstimator> pose_estimator;
 };
 
@@ -259,8 +292,11 @@ void Custom::LowCmdWrite()
     // --- Step 6: Update joint states in dynamics model ---
     dynamics->update_joint_states(q, dq);
     
-    // --- TODO Step 7: Set task-space goals (modify setpoints in constraint handlers) ---
-
+    // --- Step 7: Set task-space goals (modify setpoints in constraint handlers) ---
+    // Only keep the double foot standing (stationary feet) task
+    Eigen::VectorXd zero_acc = Eigen::VectorXd::Zero(6);
+    right_foot_constraint->set_acceleration_target(zero_acc);
+    left_foot_constraint->set_acceleration_target(zero_acc);
     
     // --- Step 8: Solve QP to get joint torques ---
     bool qp_success = roller->step(); // This calls solve_qp internally
