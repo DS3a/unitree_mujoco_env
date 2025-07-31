@@ -20,6 +20,10 @@
 #include "Array.hh"
 #include "QuadProg++.hh"
 
+// #include "../whole_body_roller/include/constraint.hpp"
+#include "constraint.hpp"
+#include "control_decision_variables.hpp"
+
 #include "../whole_body_roller/include/constraint.hpp"
 #include <Eigen/Dense>
 #include "../whole_body_roller/include/roller.hpp"
@@ -307,7 +311,7 @@ void Custom::LowCmdWrite()
         for (int i = 0; i < H1_NUM_MOTOR; i++) {
             low_cmd.motor_cmd()[i].q() = stand_up_joint_pos[i];
             low_cmd.motor_cmd()[i].dq() = 0;
-            low_cmd.motor_cmd()[i].kp() = 100;
+            low_cmd.motor_cmd()[i].kp() = 20;
             low_cmd.motor_cmd()[i].kd() = 3.5;
             low_cmd.motor_cmd()[i].tau() = 0;
         }
