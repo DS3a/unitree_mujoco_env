@@ -83,6 +83,10 @@ public:
 
         // --- Initialize WBC components ---
         // Initialize control decision variables (nv = velocity variables, nc = contact points)
+        dec_v = std::make_shared<whole_body_roller::ControlDecisionVariables>(model->nv, 0); // 0 contact points for now
+        
+        // Initialize dynamics
+        dynamics = std::make_shared<whole_body_roller::Dynamics>(model, data);
 
         // Initialize Roller (main WBC controller)
         roller = std::make_shared<whole_body_roller::Roller>(dec_v, dynamics);
@@ -266,6 +270,21 @@ void Custom::LowCmdWrite()
     Eigen::VectorXd dq(model->nv);  // Velocity vector (floating base + joints)
     
     // --- Step 3: Get floating base pose from pose estimator ---
+    if (!pose_estimator->isInitialized()) {
+        std::cout << "[H1 Controller] Waiting for pose estimator to initialize..." << std::endl;
+        // Use fallback control while pose estimator initializes
+        for (int i = 0; i < H1_NUM_MOTOR; i++) {
+            low_cmd.motor_cmd()[i].q() = stand_up_joint_pos[i];
+            low_cmd.motor_cmd()[i].dq() = 0;
+            low_cmd.motor_cmd()[i].kp() = 100;
+            low_cmd.motor_cmd()[i].kd() = 3.5;
+            low_cmd.motor_cmd()[i].tau() = 0;
+        }
+        low_cmd.crc() = crc32_core((uint32_t *)&low_cmd, (sizeof(unitree_go::msg::dds_::LowCmd_) >> 2) - 1);
+        lowcmd_publisher->Write(low_cmd);
+        return;
+    }
+    
     auto base_pos = pose_estimator->getPosition();      // [x, y, z]
     auto base_quat = pose_estimator->getOrientation();  // [w, x, y, z]
     auto base_lin_vel = pose_estimator->getLinearVelocity();  // [vx, vy, vz]
@@ -281,6 +300,14 @@ void Custom::LowCmdWrite()
     dq[0] = base_lin_vel[0]; dq[1] = base_lin_vel[1]; dq[2] = base_lin_vel[2];
     // Angular velocity [wx, wy, wz]
     dq[3] = base_ang_vel[0]; dq[4] = base_ang_vel[1]; dq[5] = base_ang_vel[2];
+    
+    // Debug: Print pose estimator status periodically
+    static int debug_counter = 0;
+    if (++debug_counter % 500 == 0) { // Print every 500 iterations (1 second at 500Hz)
+        std::cout << "[H1 Controller] Base pose - Pos: [" 
+                  << base_pos[0] << ", " << base_pos[1] << ", " << base_pos[2] 
+                  << "], Vel: [" << base_lin_vel[0] << ", " << base_lin_vel[1] << ", " << base_lin_vel[2] << "]" << std::endl;
+    }
     
     // --- Step 5: Fill joint states (starting from index 7 for q, index 6 for dq) ---
     // Assuming first 27 joints are actuated, adjust as needed
