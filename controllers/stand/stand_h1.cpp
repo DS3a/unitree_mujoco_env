@@ -25,7 +25,7 @@
 #include "../whole_body_roller/include/roller.hpp"
 #include "../whole_body_roller/include/dynamics.hpp"
 #include "../whole_body_roller/include/task_space_constraints/frame_acceleration.hpp"
-#include "../whole_body_roller/include/pose_estimator.hpp"
+#include "../../include/unitree_pose_estimator.hpp"
 
 using namespace unitree::common;
 using namespace unitree::robot;
@@ -92,7 +92,7 @@ public:
         roller = std::make_shared<whole_body_roller::Roller>(dec_v, dynamics);
         
         // Initialize pose estimator for floating base
-        pose_estimator = std::make_unique<FloatingBasePoseEstimator>(0.2f, 0.2f); // acc_alpha, vel_alpha
+        pose_estimator = std::make_shared<UnitreePoseEstimator>(0.2f, 0.2f); // acc_alpha, vel_alpha
 
         // Here: keep both feet stationary  
         right_foot_constraint = std::make_shared<whole_body_roller::FrameAccelerationConstraint>(dynamics, "right_ankle_link");
@@ -167,7 +167,7 @@ private:
     std::shared_ptr<whole_body_roller::FrameAccelerationConstraint> right_arm_constraint;
     std::shared_ptr<whole_body_roller::FrameAccelerationConstraint> left_arm_constraint;
     
-    std::unique_ptr<FloatingBasePoseEstimator> pose_estimator;
+    std::shared_ptr<whole_body_roller::PoseEstimatorInterface> pose_estimator;
 };
 
 uint32_t crc32_core(uint32_t *ptr, uint32_t len)
