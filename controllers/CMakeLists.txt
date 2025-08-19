@@ -43,19 +43,19 @@ set(SIM_DEPENDENCIES
     unitree_sdk2
     ${PINOCCHIO_LIBRARIES})
 
-add_executable(wbc_simulation wbc_simulation/wbc_simulation.cpp)
-target_link_libraries(wbc_simulation
-    PRIVATE
-    whole_body_roller
-    ${PINOCCHIO_LIBRARIES}
-    Eigen3::Eigen
-    # Unitree libs, z.B.:
-    unitree_sdk2  # Beispielname, ersetze mit dem richtigen Libnamen
-    pthread
-    mujoco::mujoco
-    glfw
-    yaml-cpp
-)
+# add_executable(wbc_simulation wbc_simulation/wbc_simulation.cpp)
+# target_link_libraries(wbc_simulation
+#     PRIVATE
+#     whole_body_roller
+#     ${PINOCCHIO_LIBRARIES}
+#     Eigen3::Eigen
+#     # Unitree libs, z.B.:
+#     unitree_sdk2  # Beispielname, ersetze mit dem richtigen Libnamen
+#     pthread
+#     mujoco::mujoco
+#     glfw
+#     yaml-cpp
+# )
 
 add_executable(unitree_mujoco ${SIM_SRC} src/main.cc)
 target_link_libraries(unitree_mujoco ${SIM_DEPENDENCIES})
