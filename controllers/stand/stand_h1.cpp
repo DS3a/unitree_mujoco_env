@@ -83,6 +83,24 @@ public:
     Custom(){
         this->model = std::make_shared<pinocchio::Model>();
         pinocchio::urdf::buildModel(model_urdf_path, *(this->model));
+        pinocchio::SE3 T_ankle_to_sole = pinocchio::SE3::Identity();
+        T_ankle_to_sole.translation() << 0.05, 0.0, -0.05;   // example: 9 cm below ankle
+
+
+        pinocchio::Frame right_sole_frame(
+            "Right_sole", 
+            model->getJointId("right_ankle_joint"),
+            T_ankle_to_sole,
+            pinocchio::FrameType::OP_FRAME);
+
+        pinocchio::Frame left_sole_frame(
+            "Left_sole", 
+            model->getJointId("left_ankle_joint"),
+            T_ankle_to_sole,
+            pinocchio::FrameType::OP_FRAME);
+        
+        this->model->addFrame(right_sole_frame, false);
+        this->model->addFrame(left_sole_frame, false);
         this->data = std::make_shared<pinocchio::Data>(*this->model);
 
         // --- Initialize WBC components ---
