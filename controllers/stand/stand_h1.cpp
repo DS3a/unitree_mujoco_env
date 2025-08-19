@@ -87,10 +87,12 @@ public:
 
         // --- Initialize WBC components ---
         // Initialize control decision variables (nv = velocity variables, nc = contact points)
-        dec_v = std::make_shared<whole_body_roller::ControlDecisionVariables>(model->nv, 0); // 0 contact points for now
+        // dec_v = std::make_shared<whole_body_roller::ControlDecisionVariables>(model->nv, 0); // 0 contact points for now
         
         // Initialize dynamics
         dynamics = std::make_shared<whole_body_roller::Dynamics>(4, model);
+
+        // TODO add end effectors to the dynammics
 
         // Initialize Roller (main WBC controller)
         roller = std::make_shared<whole_body_roller::Roller>(dynamics);
@@ -159,7 +161,7 @@ private:
     std::shared_ptr<pinocchio::Data> data;
 
     // --- WBC components ---
-    std::shared_ptr<whole_body_roller::ControlDecisionVariables> dec_v;
+    // std::shared_ptr<whole_body_roller::ControlDecisionVariables> dec_v;
     std::shared_ptr<whole_body_roller::Dynamics> dynamics;
     std::shared_ptr<whole_body_roller::Roller> roller;
     std::shared_ptr<whole_body_roller::FrameAccelerationConstraint> right_foot_constraint;
@@ -345,8 +347,8 @@ void Custom::LowCmdWrite()
     } else {
         // --- Step 9: Write computed torques to low_cmd ---
         // dec_v->tau is a shared_ptr<Eigen::VectorXd> of size nv-6 (floating base not actuated)
-        for (int i = 0; i < dec_v->tau->size(); ++i) {
-            low_cmd.motor_cmd()[i].tau() = (*(dec_v->tau))[i];
+        for (int i = 0; i < model->nv; ++i) {
+            low_cmd.motor_cmd()[i].tau() = (*(roller->joint_torques))[i];
             // Set position/velocity gains to zero for pure torque control
             low_cmd.motor_cmd()[i].q() = PosStopF;
             low_cmd.motor_cmd()[i].dq() = VelStopF;
@@ -355,7 +357,7 @@ void Custom::LowCmdWrite()
         }
         
         // Set remaining motors to zero torque (if any)
-        for (int i = dec_v->tau->size(); i < H1_NUM_MOTOR; ++i) {
+        for (int i = model->nv; i < H1_NUM_MOTOR; ++i) {
             low_cmd.motor_cmd()[i].tau() = 0;
             low_cmd.motor_cmd()[i].q() = PosStopF;
             low_cmd.motor_cmd()[i].dq() = VelStopF;
