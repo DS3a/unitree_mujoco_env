@@ -29,7 +29,7 @@
 #include "../whole_body_roller/include/roller.hpp"
 #include "../whole_body_roller/include/dynamics.hpp"
 #include "../whole_body_roller/include/task_space_constraints/frame_acceleration.hpp"
-#include "../../include/unitree_pose_estimator.hpp"
+#include "../include/unitree_pose_estimator.hpp"
 
 using namespace unitree::common;
 using namespace unitree::robot;
@@ -90,13 +90,13 @@ public:
         dec_v = std::make_shared<whole_body_roller::ControlDecisionVariables>(model->nv, 0); // 0 contact points for now
         
         // Initialize dynamics
-        dynamics = std::make_shared<whole_body_roller::Dynamics>(model, data);
+        dynamics = std::make_shared<whole_body_roller::Dynamics>(4, model);
 
         // Initialize Roller (main WBC controller)
-        roller = std::make_shared<whole_body_roller::Roller>(dec_v, dynamics);
+        roller = std::make_shared<whole_body_roller::Roller>(dynamics);
         
         // Initialize pose estimator for floating base
-        pose_estimator = std::make_shared<UnitreePoseEstimator>(0.2f, 0.2f); // acc_alpha, vel_alpha
+        pose_estimator = std::make_shared<UnitreePoseEstimator>(0.2, 0.2); // acc_alpha, vel_alpha
 
         // Here: keep both feet stationary  
         right_foot_constraint = std::make_shared<whole_body_roller::FrameAccelerationConstraint>(dynamics, "right_ankle_link");
@@ -171,7 +171,7 @@ private:
     std::shared_ptr<whole_body_roller::FrameAccelerationConstraint> right_arm_constraint;
     std::shared_ptr<whole_body_roller::FrameAccelerationConstraint> left_arm_constraint;
     
-    std::shared_ptr<whole_body_roller::PoseEstimatorInterface> pose_estimator;
+    std::shared_ptr<UnitreePoseEstimator> pose_estimator;
 };
 
 uint32_t crc32_core(uint32_t *ptr, uint32_t len)
@@ -266,7 +266,7 @@ void Custom::LowCmdWrite()
 {
     // --- Step 1: Update pose estimation for floating base ---
     static double current_time = 0.0;
-    pose_estimator->update(current_time);
+    pose_estimator->update_est(current_time, &low_state);
     current_time += dt;
     
     // --- Step 2: Read joint states from low_state ---
