@@ -110,8 +110,22 @@ public:
         // Initialize dynamics
         dynamics = std::make_shared<whole_body_roller::Dynamics>(4, model);
 
-        // TODO add end effectors to the dynammics
+        dynamics->add_end_effector("right_sole");
+        dynamics->change_end_effector_function("right_sole", whole_body_roller::end_effector_function_t::LOCOMOTION);
+        dynamics->change_end_effector_state("right_sole", whole_body_roller::end_effector_state_t::IN_CONTACT);
 
+        dynamics->add_end_effector("left_sole");
+        dynamics->change_end_effector_function("left_sole", whole_body_roller::end_effector_function_t::LOCOMOTION);
+        dynamics->change_end_effector_state("left_sole", whole_body_roller::end_effector_state_t::IN_CONTACT);
+
+        dynamics->add_end_effector("right_elbow_link");
+        dynamics->change_end_effector_function("right_elbow_link", whole_body_roller::end_effector_function_t::MANIPULATION);
+        dynamics->change_end_effector_state("right_elbow_link", whole_body_roller::end_effector_state_t::FLOATING);
+        
+        dynamics->add_end_effector("left_elbow_link");
+        dynamics->change_end_effector_function("left_elbow_link", whole_body_roller::end_effector_function_t::MANIPULATION);
+        dynamics->change_end_effector_state("left_elbow_link", whole_body_roller::end_effector_state_t::FLOATING);
+        
         // Initialize Roller (main WBC controller)
         roller = std::make_shared<whole_body_roller::Roller>(dynamics);
         
@@ -127,20 +141,20 @@ public:
         
         // Initialize additional constraint handlers for different tasks (here we only keep the double foot standing task)
         // Torso control - using "torso_link" from H1 URDF
-        torso_constraint = std::make_shared<whole_body_roller::FrameAccelerationConstraint>(dynamics, "torso_link");
-        roller->add_constraint(torso_constraint->constraint, torso_constraint);
+        // torso_constraint = std::make_shared<whole_body_roller::FrameAccelerationConstraint>(dynamics, "torso_link");
+        // roller->add_constraint(torso_constraint->constraint, torso_constraint);
         
         // Center of mass control - using "pelvis" as COM reference frame
         com_constraint = std::make_shared<whole_body_roller::FrameAccelerationConstraint>(dynamics, "pelvis");
         roller->add_constraint(com_constraint->constraint, com_constraint);
         
-        // Right arm control - using "right_elbow_link" for arm end-effector
-        right_arm_constraint = std::make_shared<whole_body_roller::FrameAccelerationConstraint>(dynamics, "right_elbow_link");
-        roller->add_constraint(right_arm_constraint->constraint, right_arm_constraint);
+        // // Right arm control - using "right_elbow_link" for arm end-effector
+        // right_arm_constraint = std::make_shared<whole_body_roller::FrameAccelerationConstraint>(dynamics, "right_elbow_link");
+        // roller->add_constraint(right_arm_constraint->constraint, right_arm_constraint);
         
-        // Left arm control - using "left_elbow_link" for arm end-effector
-        left_arm_constraint = std::make_shared<whole_body_roller::FrameAccelerationConstraint>(dynamics, "left_elbow_link");
-        roller->add_constraint(left_arm_constraint->constraint, left_arm_constraint);
+        // // Left arm control - using "left_elbow_link" for arm end-effector
+        // left_arm_constraint = std::make_shared<whole_body_roller::FrameAccelerationConstraint>(dynamics, "left_elbow_link");
+        // roller->add_constraint(left_arm_constraint->constraint, left_arm_constraint);
 
         // std::cout << "Model loaded successfully!" << std::endl;
     };
