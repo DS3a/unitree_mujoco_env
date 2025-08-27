@@ -88,13 +88,13 @@ public:
 
 
         pinocchio::Frame right_sole_frame(
-            "Right_sole", 
+            "right_sole", 
             model->getJointId("right_ankle_joint"),
             T_ankle_to_sole,
             pinocchio::FrameType::OP_FRAME);
 
         pinocchio::Frame left_sole_frame(
-            "Left_sole", 
+            "left_sole", 
             model->getJointId("left_ankle_joint"),
             T_ankle_to_sole,
             pinocchio::FrameType::OP_FRAME);
@@ -133,10 +133,12 @@ public:
         pose_estimator = std::make_shared<UnitreePoseEstimator>(0.2, 0.2); // acc_alpha, vel_alpha
 
         // Here: keep both feet stationary  
-        right_foot_constraint = std::make_shared<whole_body_roller::FrameAccelerationConstraint>(dynamics, "right_ankle_link");
+        right_foot_constraint = std::make_shared<whole_body_roller::FrameAccelerationConstraint>(dynamics, "right_sole");
+        right_foot_constraint->set_acceleration_target(Eigen::VectorXd::Zero(6)); // zero acceleration target
         roller->add_constraint(right_foot_constraint->constraint, right_foot_constraint);
         
-        left_foot_constraint = std::make_shared<whole_body_roller::FrameAccelerationConstraint>(dynamics, "left_ankle_link");
+        left_foot_constraint = std::make_shared<whole_body_roller::FrameAccelerationConstraint>(dynamics, "left_sole");
+        left_foot_constraint->set_acceleration_target(Eigen::VectorXd::Zero(6)); // zero acceleration target
         roller->add_constraint(left_foot_constraint->constraint, left_foot_constraint);
         
         // Initialize additional constraint handlers for different tasks (here we only keep the double foot standing task)
