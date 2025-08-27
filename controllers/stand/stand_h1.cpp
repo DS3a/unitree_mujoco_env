@@ -77,7 +77,7 @@ enum JointIndex {
 
 const int H1_NUM_MOTOR = 27;
 
-const std::string model_urdf_path = "/home/linus-schmueser/unitree_mujoco_env/robot_urdfs/h1_description/urdf/h1.urdf";  // passe Pfad ggf. an
+const std::string model_urdf_path = "/home/ds3a/dev/humanoid_wbc/unitree_ros/robots/h1_description/urdf/h1.urdf";
 
 class Custom
 {
