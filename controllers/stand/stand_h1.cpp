@@ -31,6 +31,8 @@
 #include "../whole_body_roller/include/task_space_constraints/frame_acceleration.hpp"
 #include "../include/unitree_pose_estimator.hpp"
 
+#include <helpers.hpp>
+
 using namespace unitree::common;
 using namespace unitree::robot;
 
@@ -75,7 +77,7 @@ enum JointIndex {
 
 const int H1_NUM_MOTOR = 27;
 
-const std::string model_urdf_path = "/home/ds3a/dev/humanoid_wbc/unitree_ros/robots/h1_description/urdf/h1.urdf";
+const std::string model_urdf_path = "/home/linus-schmueser/unitree_mujoco_env/robot_urdfs/h1_description/urdf/h1.urdf";  // passe Pfad ggf. an
 
 class Custom
 {
@@ -352,8 +354,8 @@ void Custom::LowCmdWrite()
     // --- Step 5: Fill joint states (starting from index 7 for q, index 6 for dq) ---
     // Assuming first 27 joints are actuated, adjust as needed
     for (int i = 0; i < 27; ++i) {
-        q[i + 7] = low_state.motor_state()[i].q();  // +7 for floating base (3 pos + 4 quat)
-        dq[i + 6] = low_state.motor_state()[i].dq(); // +6 for floating base (3 lin vel + 3 ang vel)
+        q[i + 7] = low_state.motor_state()[urdf_to_sdk_Index[i]].q();  // +7 for floating base (3 pos + 4 quat)
+        dq[i + 6] = low_state.motor_state()[urdf_to_sdk_Index[i]].dq(); // +6 for floating base (3 lin vel + 3 ang vel)
     }
     
     // --- Step 6: Update joint states in dynamics model ---
@@ -382,7 +384,7 @@ void Custom::LowCmdWrite()
         // --- Step 9: Write computed torques to low_cmd ---
         // dec_v->tau is a shared_ptr<Eigen::VectorXd> of size nv-6 (floating base not actuated)
         for (int i = 0; i < model->nv; ++i) {
-            low_cmd.motor_cmd()[i].tau() = (*(roller->joint_torques))[i];
+            low_cmd.motor_cmd()[i].tau() = (*(roller->joint_torques))[sdk_to_urdf_Index[i]];
             // Set position/velocity gains to zero for pure torque control
             low_cmd.motor_cmd()[i].q() = PosStopF;
             low_cmd.motor_cmd()[i].dq() = VelStopF;
