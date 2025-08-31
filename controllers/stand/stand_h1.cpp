@@ -17,8 +17,8 @@
 #include "pinocchio/algorithm/kinematics.hpp"
 #include "pinocchio/algorithm/geometry.hpp"
 
-#include "Array.hh"
-#include "QuadProg++.hh"
+// #include "Array.hh"
+// #include "QuadProg++.hh"
 
 // #include "../whole_body_roller/include/constraint.hpp"
 #include "constraint.hpp"

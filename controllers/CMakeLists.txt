@@ -67,7 +67,7 @@ add_executable(stand_go2 stand/stand_go2.cpp)
 target_link_libraries(stand_go2 unitree_sdk2)
 
 add_executable(stand_h1 stand/stand_h1.cpp)
-target_link_libraries(stand_h1 quadprogpp)
+# target_link_libraries(stand_h1 quadprogpp)
 target_link_libraries(stand_h1  unitree_sdk2)
 target_link_libraries(stand_h1 whole_body_roller)
 target_link_libraries(stand_h1 ${PINOCCHIO_LIBRARIES})
