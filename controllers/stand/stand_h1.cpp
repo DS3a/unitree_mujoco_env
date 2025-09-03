@@ -84,7 +84,7 @@ class Custom
 public:
     Custom(){
         this->model = std::make_shared<pinocchio::Model>();
-        pinocchio::urdf::buildModel(model_urdf_path, *(this->model));
+        pinocchio::urdf::buildModel(model_urdf_path, pinocchio::JointModelFreeFlyer(), *(this->model));
         pinocchio::SE3 T_ankle_to_sole = pinocchio::SE3::Identity();
         T_ankle_to_sole.translation() << 0.05, 0.0, -0.05;   // example: 9 cm below ankle
 
@@ -326,6 +326,11 @@ void Custom::LowCmdWrite()
         lowcmd_publisher->Write(low_cmd);
         return;
     }
+
+    if (roller->optim == nullptr) {
+        std::cout << "[H1 Controller] Waiting for WBC to initialize..." << std::endl;
+        return;
+    }
     
     auto base_pos = pose_estimator->getPosition();      // [x, y, z]
     auto base_quat = pose_estimator->getOrientation();  // [w, x, y, z]
@@ -347,7 +352,7 @@ void Custom::LowCmdWrite()
     static int debug_counter = 0;
     if (++debug_counter % 500 == 0) { // Print every 500 iterations (1 second at 500Hz)
         std::cout << "[H1 Controller] Base pose - Pos: [" 
-                  << base_pos[0] << ", " << base_pos[1] << ", " << base_pos[2] 
+                  << base_pos[0] << ", " << base_pos[1] << ",  struct" << base_pos[2] 
                   << "], Vel: [" << base_lin_vel[0] << ", " << base_lin_vel[1] << ", " << base_lin_vel[2] << "]" << std::endl;
     }
     
@@ -357,33 +362,36 @@ void Custom::LowCmdWrite()
         q[i + 7] = low_state.motor_state()[urdf_to_sdk_Index[i]].q();  // +7 for floating base (3 pos + 4 quat)
         dq[i + 6] = low_state.motor_state()[urdf_to_sdk_Index[i]].dq(); // +6 for floating base (3 lin vel + 3 ang vel)
     }
-    
+
+    std::cout << "updating joint states\n";    
     // --- Step 6: Update joint states in dynamics model ---
     dynamics->update_joint_states(q, dq);
+    dynamics->update_dynamics_constraint();
     
     // --- Step 7: Set task-space goals (modify setpoints in constraint handlers) ---
     // Only keep the double foot standing (stationary feet) task
     Eigen::VectorXd zero_acc = Eigen::VectorXd::Zero(6);
     right_foot_constraint->set_acceleration_target(zero_acc);
     left_foot_constraint->set_acceleration_target(zero_acc);
-    
+
+    std::cout << "updating constraints\n";    
     // --- Step 8: Solve QP to get joint torques ---
     bool qp_success = roller->step(); // This calls solve_qp internally
-    
+    std::cout << "qp success: " << qp_success << "\n"; 
     if (!qp_success) {
         std::cout << "QP solve failed! Using fallback control." << std::endl;
         // Fallback to simple position control if QP fails
         for (int i = 0; i < H1_NUM_MOTOR; i++) {
-            low_cmd.motor_cmd()[i].q() = stand_up_joint_pos[i];
+            low_cmd.motor_cmd()[i].q() = 0;
             low_cmd.motor_cmd()[i].dq() = 0;
-            low_cmd.motor_cmd()[i].kp() = 20;
-            low_cmd.motor_cmd()[i].kd() = 3.5;
+            low_cmd.motor_cmd()[i].kp() = 0;
+            low_cmd.motor_cmd()[i].kd() = 0;
             low_cmd.motor_cmd()[i].tau() = 0;
         }
     } else {
         // --- Step 9: Write computed torques to low_cmd ---
         // dec_v->tau is a shared_ptr<Eigen::VectorXd> of size nv-6 (floating base not actuated)
-        for (int i = 0; i < model->nv; ++i) {
+        for (int i = 0; i < dynamics->dec_v->ntau_; ++i) {
             low_cmd.motor_cmd()[i].tau() = (*(roller->joint_torques))[sdk_to_urdf_Index[i]];
             // Set position/velocity gains to zero for pure torque control
             low_cmd.motor_cmd()[i].q() = PosStopF;
@@ -392,14 +400,14 @@ void Custom::LowCmdWrite()
             low_cmd.motor_cmd()[i].kd() = 0;
         }
         
-        // Set remaining motors to zero torque (if any)
-        for (int i = model->nv; i < H1_NUM_MOTOR; ++i) {
-            low_cmd.motor_cmd()[i].tau() = 0;
-            low_cmd.motor_cmd()[i].q() = PosStopF;
-            low_cmd.motor_cmd()[i].dq() = VelStopF;
-            low_cmd.motor_cmd()[i].kp() = 0;
-            low_cmd.motor_cmd()[i].kd() = 0;
-        }
+        // // Set remaining motors to zero torque (if any)
+        // for (int i = model->nv; i < H1_NUM_MOTOR; ++i) {
+        //     low_cmd.motor_cmd()[i].tau() = 0;
+        //     low_cmd.motor_cmd()[i].q() = PosStopF;
+        //     low_cmd.motor_cmd()[i].dq() = VelStopF;
+        //     low_cmd.motor_cmd()[i].kp() = 0;
+        //     low_cmd.motor_cmd()[i].kd() = 0;
+        // }
     }
 
     low_cmd.crc() = crc32_core((uint32_t *)&low_cmd, (sizeof(unitree_go::msg::dds_::LowCmd_) >> 2) - 1);
