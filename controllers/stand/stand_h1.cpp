@@ -75,9 +75,9 @@ enum JointIndex {
 
 };
 
-const int H1_NUM_MOTOR = 27;
+const int H1_NUM_MOTOR = 20;
 
-const std::string model_urdf_path = "/home/ds3a/dev/humanoid_wbc/unitree_ros/robots/h1_description/urdf/h1.urdf";
+const std::string model_urdf_path = "/home/linus-schmueser/unitree_mujoco_env/robot_urdfs/h1_description/urdf/h1.urdf";
 
 class Custom
 {
@@ -173,14 +173,20 @@ private:
     void LowCmdWrite();
 
 private:
-    double stand_up_joint_pos[27] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-                                     0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-                                     0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-                                     0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
-    double stand_down_joint_pos[27] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-                                     0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-                                     0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
-                                     0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+    double stand_up_joint_pos[26] = {0.0, 0.0, 0.98,
+                                     1.0, 0.0, 0.0, 0.0,
+                                     0.0, 0.0, -0.5, 0.8, -0.4,
+                                     0.0, 0.0, -0.5, 0.8, -0.4,
+                                     0.0,
+                                     -1.0, 0.0, 0.0, 1.3,
+                                     -1.0, 0.0, 0.0, 1.3};
+    double stand_down_joint_pos[26] = {0.0, 0.0, 0.98,
+                                     1.0, 0.0, 0.0, 0.0,
+                                     0.0, 0.0, -0.5, 0.8, -0.4,
+                                     0.0, 0.0, -0.5, 0.8, -0.4,
+                                     0.0,
+                                     -1.0, 0.0, 0.0, 1.3,
+                                     -1.0, 0.0, 0.0, 1.3};
     double dt = 0.002;
     unitree_go::msg::dds_::LowCmd_ low_cmd;     // default init
     unitree_go::msg::dds_::LowState_ low_state; // default init
@@ -309,12 +315,19 @@ void Custom::LowCmdWrite()
     
     // --- Step 2: Read joint states from low_state ---
     Eigen::VectorXd q(model->nq);   // Configuration vector (floating base + joints)
+    q = Eigen::VectorXd::Zero(model->nq); //just in case
     Eigen::VectorXd dq(model->nv);  // Velocity vector (floating base + joints)
-    
+    dq = Eigen::VectorXd::Zero(model->nv); //just in case
+
+    std::cout << "model->nq: " << model->nq << std::endl; //-_> 26
+    std::cout << "model->nv: " << model->nv << std::endl; //--> 25
+
     // --- Step 3: Get floating base pose from pose estimator ---
     if (!pose_estimator->isInitialized()) {
         std::cout << "[H1 Controller] Waiting for pose estimator to initialize..." << std::endl;
         // Use fallback control while pose estimator initializes
+        std::cout << "q size=" << q.size() << " dq size=" << dq.size() << " motors=" << low_state.motor_state().size() << " urdf_to_sdk_Index size=" << urdf_to_sdk_Index.size() << " H1_NUM_MOTOR=" << H1_NUM_MOTOR << std::endl;
+
         for (int i = 0; i < H1_NUM_MOTOR; i++) {
             low_cmd.motor_cmd()[i].q() = stand_up_joint_pos[i];
             low_cmd.motor_cmd()[i].dq() = 0;
@@ -333,10 +346,14 @@ void Custom::LowCmdWrite()
     }
     
     auto base_pos = pose_estimator->getPosition();      // [x, y, z]
+    std::cout << "Estimated pos: " << base_pos << std::endl;
     auto base_quat = pose_estimator->getOrientation();  // [w, x, y, z]
+    std::cout << "Estimated orientation: " << base_quat << std::endl;
     auto base_lin_vel = pose_estimator->getLinearVelocity();  // [vx, vy, vz]
+    std::cout << "Estimated linVel: " << base_lin_vel << std::endl;
     auto base_ang_vel = pose_estimator->getAngularVelocity(); // [wx, wy, wz]
-    
+    std::cout << "Estimated angVel: " << base_ang_vel << std::endl;
+
     // --- Step 4: Fill floating base states (first 7 elements for pose, next 6 for velocity) ---
     // Position [x, y, z]
     q[0] = base_pos[0]; q[1] = base_pos[1]; q[2] = base_pos[2];
@@ -355,24 +372,32 @@ void Custom::LowCmdWrite()
                   << base_pos[0] << ", " << base_pos[1] << ",  struct" << base_pos[2] 
                   << "], Vel: [" << base_lin_vel[0] << ", " << base_lin_vel[1] << ", " << base_lin_vel[2] << "]" << std::endl;
     }
-    
+    std::cout << "not full FILLed IN q: "<< q <<std::endl;
+    std::cout << "not full FILLed IN dq: "<< dq <<std::endl;
     // --- Step 5: Fill joint states (starting from index 7 for q, index 6 for dq) ---
     // Assuming first 27 joints are actuated, adjust as needed
-    for (int i = 0; i < 27; ++i) {
+    for (int i = 0; i < 19; ++i) {
+        std::cout << i+7 << std::endl;
         q[i + 7] = low_state.motor_state()[urdf_to_sdk_Index[i]].q();  // +7 for floating base (3 pos + 4 quat)
         dq[i + 6] = low_state.motor_state()[urdf_to_sdk_Index[i]].dq(); // +6 for floating base (3 lin vel + 3 ang vel)
     }
+    std::cout << "FILLed IN q: "<< q <<std::endl;
+    std::cout << "FILLed IN dq: "<< dq <<std::endl;
 
     std::cout << "updating joint states\n";    
     // --- Step 6: Update joint states in dynamics model ---
     dynamics->update_joint_states(q, dq);
+    std::cout << "joint states updated\n";    
     dynamics->update_dynamics_constraint();
+    std::cout << "dynamic constraints updated\n";  
     
     // --- Step 7: Set task-space goals (modify setpoints in constraint handlers) ---
     // Only keep the double foot standing (stationary feet) task
     Eigen::VectorXd zero_acc = Eigen::VectorXd::Zero(6);
     right_foot_constraint->set_acceleration_target(zero_acc);
+    std::cout << "right foot constraints updated\n"; 
     left_foot_constraint->set_acceleration_target(zero_acc);
+    std::cout << "left foot constraints updated\n"; 
 
     std::cout << "updating constraints\n";    
     // --- Step 8: Solve QP to get joint torques ---
@@ -391,6 +416,8 @@ void Custom::LowCmdWrite()
     } else {
         // --- Step 9: Write computed torques to low_cmd ---
         // dec_v->tau is a shared_ptr<Eigen::VectorXd> of size nv-6 (floating base not actuated)
+        std::cout << "dynamics->dec_v->ntau_: "<<  dynamics->dec_v->ntau_ << std::endl;
+        std::cout << "computed torques: "<<  roller->joint_torques << std::endl;
         for (int i = 0; i < dynamics->dec_v->ntau_; ++i) {
             low_cmd.motor_cmd()[i].tau() = (*(roller->joint_torques))[sdk_to_urdf_Index[i]];
             // Set position/velocity gains to zero for pure torque control
@@ -399,7 +426,6 @@ void Custom::LowCmdWrite()
             low_cmd.motor_cmd()[i].kp() = 0;
             low_cmd.motor_cmd()[i].kd() = 0;
         }
-        
         // // Set remaining motors to zero torque (if any)
         // for (int i = model->nv; i < H1_NUM_MOTOR; ++i) {
         //     low_cmd.motor_cmd()[i].tau() = 0;
