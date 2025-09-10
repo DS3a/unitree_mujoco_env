@@ -29,6 +29,7 @@
 #include <mujoco/mjui.h>
 #include <mujoco/mujoco.h>
 #include "platform_ui_adapter.h"
+#include "../unitree_sdk2_bridge/unitree_sdk2_bridge.h"
 
 namespace mujoco
 {
@@ -97,6 +98,9 @@ namespace mujoco
     // render the ui to the window
     void Render();
 
+    // initialize a bridge that sends the pose from the robot in the simulation to the controller
+    void InitializeBridge(mjModel* m, mjData* d);
+
     // loop to render the UI (must be called from main thread because of MacOS)
     void RenderLoop();
 
@@ -119,6 +123,8 @@ namespace mujoco
 
     mjModel *m_ = nullptr;
     mjData *d_ = nullptr;
+
+    std::unique_ptr<UnitreeSdk2Bridge> bridge_;
 
     int ncam_ = 0;
     int nkey_ = 0;

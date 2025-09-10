@@ -2,20 +2,32 @@
 
 UnitreeSdk2Bridge::UnitreeSdk2Bridge(mjModel *model, mjData *data) : mj_model_(model), mj_data_(data)
 {
+    std::cout << "befor check sensor " << std::endl;
     CheckSensor();
-
+    std::cout << "in const " << idl_type_ << std::endl;
+    std::cout << "mj_model_ = " << mj_model_ << ", mj_data_ = " << mj_data_<< std::endl;
     if (idl_type_ == 0)
     {
+        
+        std::cout << "in if " <<std::endl;
         low_cmd_go_suber_.reset(new ChannelSubscriber<unitree_go::msg::dds_::LowCmd_>(TOPIC_LOWCMD));
+        std::cout << "in middle " <<std::endl;
         low_cmd_go_suber_->InitChannel(bind(&UnitreeSdk2Bridge::LowCmdGoHandler, this, placeholders::_1), 1);
-
+        std::cout << "suber initialized " <<std::endl;
         low_state_go_puber_.reset(new ChannelPublisher<unitree_go::msg::dds_::LowState_>(TOPIC_LOWSTATE));
         low_state_go_puber_->InitChannel();
+        std::cout << "puber initialized " <<std::endl;
 
         lowStatePuberThreadPtr = CreateRecurrentThreadEx("lowstate", UT_CPU_ID_NONE, 2000, &UnitreeSdk2Bridge::PublishLowStateGo, this);
+        std::cout << "Thread created \n" <<std::endl;
+        
+        //sim_state_puber_ = ChannelPublisher<unitree::SimState>::Create(1, "SimState");
+        //sim_state_puber_ = ChannelPublisher<unitree::msg::dds_::SimState_>::Create(1, "SimState");
+
     }
     else
     {
+        std::cout << "in else " <<std::endl;
         low_cmd_hg_suber_.reset(new ChannelSubscriber<unitree_hg::msg::dds_::LowCmd_>(TOPIC_LOWCMD));
         low_cmd_hg_suber_->InitChannel(bind(&UnitreeSdk2Bridge::LowCmdHgHandler, this, placeholders::_1), 1);
 
@@ -23,15 +35,15 @@ UnitreeSdk2Bridge::UnitreeSdk2Bridge(mjModel *model, mjData *data) : mj_model_(m
         low_state_hg_puber_->InitChannel();
 
         lowStatePuberThreadPtr = CreateRecurrentThreadEx("lowstate", UT_CPU_ID_NONE, 2000, &UnitreeSdk2Bridge::PublishLowStateHg, this);
+        std::cout << "Low level Cmd Channel initialized" <<std::endl;
     }
-
-    high_state_puber_.reset(new ChannelPublisher<unitree_go::msg::dds_::SportModeState_>(TOPIC_HIGHSTATE));
+     high_state_puber_.reset(new ChannelPublisher<unitree_go::msg::dds_::SportModeState_>(TOPIC_HIGHSTATE));
     high_state_puber_->InitChannel();
     wireless_controller_puber_.reset(new ChannelPublisher<unitree_go::msg::dds_::WirelessController_>(TOPIC_WIRELESS_CONTROLLER));
     wireless_controller_puber_->InitChannel();
-
     HighStatePuberThreadPtr = CreateRecurrentThreadEx("highstate", UT_CPU_ID_NONE, 2000, &UnitreeSdk2Bridge::PublishHighState, this);
     WirelessControllerPuberThreadPtr = CreateRecurrentThreadEx("wirelesscontroller", UT_CPU_ID_NONE, 2000, &UnitreeSdk2Bridge::PublishWirelessController, this);
+    std::cout << "Constructor finished" <<std::endl;
 }
 
 UnitreeSdk2Bridge::~UnitreeSdk2Bridge()

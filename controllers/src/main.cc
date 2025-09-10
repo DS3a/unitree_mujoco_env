@@ -520,10 +520,14 @@ namespace
 void PhysicsThread(mj::Simulate *sim, const char *filename)
 {
   // request loadmodel if file given (otherwise drag-and-drop)
+  std::cout << "physics thread filename"<< filename << std::endl;
   if (filename != nullptr)
   {
+    std::cout << "physics thread" << std::endl;
     sim->LoadMessage(filename);
+    std::cout << "message loaded" << std::endl;
     m = LoadModel(filename, *sim);
+    std::cout << "physics thread model"<< m << std::endl;
     if (m)
       d = mj_makeData(m);
     if (d)
@@ -541,6 +545,12 @@ void PhysicsThread(mj::Simulate *sim, const char *filename)
       sim->LoadMessageClear();
     }
   }
+  
+  std::cout << "model m_: \n"<< sim->m_<< std::endl;
+  std::cout << "data d_: \n"<< sim->d_<< std::endl;
+  std::cout << "Initialize Bridge" << std::endl;
+  sim->InitializeBridge(sim->m_ , sim->d_); // why are m_ und d_ are 0  ????????
+  std::cout << "bridge inited" << std::endl;
 
   PhysicsLoop(*sim);
 
@@ -575,13 +585,15 @@ void *UnitreeSdk2BridgeThread(void *arg)
   }
 
   ChannelFactory::Instance()->Init(config.domain_id, config.interface);
+  std::cout << "bevor bridge: " <<std::endl;
   UnitreeSdk2Bridge unitree_interface(m, d);
+  std::cout << "after bridge: " <<std::endl;
 
   if (config.use_joystick == 1)
   {
     unitree_interface.SetupJoystick(config.joystick_device, config.joystick_type, config.joystick_bits);
   }
-
+  std::cout << "bevor init: " <<std::endl;
   if (config.print_scene_information == 1)
   {
     unitree_interface.PrintSceneInformation();
@@ -606,7 +618,6 @@ __attribute__((used, visibility("default"))) extern "C" void _mj_rosettaError(co
 // run event loop
 int main(int argc, char **argv)
 {
-
   // display an error if running on macOS under Rosetta 2
 #if defined(__APPLE__) && defined(__AVX__)
   if (rosetta_error_msg)

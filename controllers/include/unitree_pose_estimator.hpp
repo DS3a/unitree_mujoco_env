@@ -37,7 +37,7 @@ public:
     UnitreePoseEstimator(float acc_alpha = 0.2f, float vel_alpha = 0.2f)
         : 
         // sub_("rt/low_state"),
-          position_{0.0f, 0.0f, 0.0f},
+          position_{0.0f, 0.0f, 0.7f}, // should be {0.0f, 0.0f, 1.1f} at the start of simulation but when the robot drops down its at ca. 0.7
           velocity_{0.0f, 0.0f, 0.0f},
           filtered_acc_{0.0f, 0.0f, 0.0f},
           filtered_vel_{0.0f, 0.0f, 0.0f},
@@ -161,6 +161,9 @@ public:
             velocity_[i] += filtered_acc_[i] * dt;
             filtered_vel_[i] = vel_alpha_ * velocity_[i] + (1.0f - vel_alpha_) * filtered_vel_[i];
             position_[i] += filtered_vel_[i] * dt;
+            std::cout << "currrent position "<< position_[i] << " currrent velocity: " <<  filtered_vel_[i] << std::endl;
+            std::cout << dt << std::endl;
+
         }
         
         if (!initialized_) {
@@ -171,7 +174,7 @@ public:
 
     // Reset estimator state
     void reset() override {
-        position_ = {0.0f, 0.0f, 0.0f};
+        position_ = {0.0f, 0.0f, 0.7f};
         velocity_ = {0.0f, 0.0f, 0.0f};
         filtered_acc_ = {0.0f, 0.0f, 0.0f};
         filtered_vel_ = {0.0f, 0.0f, 0.0f};

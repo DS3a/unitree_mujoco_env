@@ -139,9 +139,9 @@ public:
         right_foot_constraint->set_acceleration_target(Eigen::VectorXd::Zero(6)); // zero acceleration target
         roller->add_constraint(right_foot_constraint->constraint, right_foot_constraint);
         
-        left_foot_constraint = std::make_shared<whole_body_roller::FrameAccelerationConstraint>(dynamics, "left_sole");
-        left_foot_constraint->set_acceleration_target(Eigen::VectorXd::Zero(6)); // zero acceleration target
-        roller->add_constraint(left_foot_constraint->constraint, left_foot_constraint);
+        //left_foot_constraint = std::make_shared<whole_body_roller::FrameAccelerationConstraint>(dynamics, "left_sole");
+        //left_foot_constraint->set_acceleration_target(Eigen::VectorXd::Zero(6)); // zero acceleration target
+        //roller->add_constraint(left_foot_constraint->constraint, left_foot_constraint);
         
         // Initialize additional constraint handlers for different tasks (here we only keep the double foot standing task)
         // Torso control - using "torso_link" from H1 URDF
@@ -149,8 +149,8 @@ public:
         // roller->add_constraint(torso_constraint->constraint, torso_constraint);
         
         // Center of mass control - using "pelvis" as COM reference frame
-        com_constraint = std::make_shared<whole_body_roller::FrameAccelerationConstraint>(dynamics, "pelvis");
-        roller->add_constraint(com_constraint->constraint, com_constraint);
+        //com_constraint = std::make_shared<whole_body_roller::FrameAccelerationConstraint>(dynamics, "pelvis");
+        //roller->add_constraint(com_constraint->constraint, com_constraint);
         
         // // Right arm control - using "right_elbow_link" for arm end-effector
         // right_arm_constraint = std::make_shared<whole_body_roller::FrameAccelerationConstraint>(dynamics, "right_elbow_link");
@@ -173,6 +173,7 @@ private:
     void LowCmdWrite();
 
 private:
+    /*
     double stand_up_joint_pos[26] = {0.0, 0.0, 0.98,
                                      1.0, 0.0, 0.0, 0.0,
                                      0.0, 0.0, -0.5, 0.8, -0.4,
@@ -187,14 +188,31 @@ private:
                                      0.0,
                                      -1.0, 0.0, 0.0, 1.3,
                                      -1.0, 0.0, 0.0, 1.3};
+    */
+   double stand_up_joint_pos[26] = {0.0, 0.0, 0.0,
+                                     0.0, 0.0, 0.0, 0.0,
+                                     0.0, 0.0, 0.0, 0.0, 0.0,
+                                     0.0, 0.0, 0.0, 0.0, 0.0,
+                                     0.0,
+                                     0.0, 0.0, 0.0, 0.0,
+                                     0.0, 0.0, 0.0, 0.0};
+    double stand_down_joint_pos[26] = {0.0, 0.0, 0.0,
+                                     0.0, 0.0, 0.0, 0.0,
+                                     0.0, 0.0, 0.0, 0.0, 0.0,
+                                     0.0, 0.0, 0.0, 0.0, 0.0,
+                                     0.0,
+                                     0.0, 0.0, 0.0, 0.0,
+                                     0.0, 0.0, 0.0, 0.0};
     double dt = 0.002;
     unitree_go::msg::dds_::LowCmd_ low_cmd;     // default init
     unitree_go::msg::dds_::LowState_ low_state; // default init
+    //unitree::msg::dds_::SimState_ sim_state;
 
     /*publisher*/
     ChannelPublisherPtr<unitree_go::msg::dds_::LowCmd_> lowcmd_publisher;
     /*subscriber*/
     ChannelSubscriberPtr<unitree_go::msg::dds_::LowState_> lowstate_subscriber;
+    //ChannelPublisherPtr<unitree::msg::dds_::SimState_> sim_state_puber_;
 
     /*LowCmd write thread*/
     ThreadPtr lowCmdWriteThreadPtr;
@@ -263,7 +281,7 @@ void Custom::Init()
 
     /*loop publishing thread*/
     lowCmdWriteThreadPtr = CreateRecurrentThreadEx("writebasiccmd", UT_CPU_ID_NONE, int(dt * 1000000), &Custom::LowCmdWrite, this);
-
+    
     // std::cout << "time, right_sh_yaw, left_sh_yaw\n";
 }
 
@@ -336,6 +354,15 @@ void Custom::LowCmdWrite()
             low_cmd.motor_cmd()[i].tau() = 0;
         }
         low_cmd.crc() = crc32_core((uint32_t *)&low_cmd, (sizeof(unitree_go::msg::dds_::LowCmd_) >> 2) - 1);
+        // Debug print
+        std::cout << "[DEBUG] Sending LowCmd: ";
+        for (int i = 0; i < H1_NUM_MOTOR; ++i) {
+        std::cout << "m" << i << "(" 
+              << low_cmd.motor_cmd()[i].q() << ","
+              << low_cmd.motor_cmd()[i].tau() << ") ";
+        }
+        std::cout << std::endl;
+
         lowcmd_publisher->Write(low_cmd);
         return;
     }
@@ -396,7 +423,7 @@ void Custom::LowCmdWrite()
     Eigen::VectorXd zero_acc = Eigen::VectorXd::Zero(6);
     right_foot_constraint->set_acceleration_target(zero_acc);
     std::cout << "right foot constraints updated\n"; 
-    left_foot_constraint->set_acceleration_target(zero_acc);
+    //left_foot_constraint->set_acceleration_target(zero_acc);
     std::cout << "left foot constraints updated\n"; 
 
     std::cout << "updating constraints\n";    
@@ -417,8 +444,9 @@ void Custom::LowCmdWrite()
         // --- Step 9: Write computed torques to low_cmd ---
         // dec_v->tau is a shared_ptr<Eigen::VectorXd> of size nv-6 (floating base not actuated)
         std::cout << "dynamics->dec_v->ntau_: "<<  dynamics->dec_v->ntau_ << std::endl;
-        std::cout << "computed torques: "<<  roller->joint_torques << std::endl;
+        //std::cout << "computed torques: "<<  roller->joint_torques << std::endl;
         for (int i = 0; i < dynamics->dec_v->ntau_; ++i) {
+            std::cout << "computed torque: "<<  (*(roller->joint_torques))[sdk_to_urdf_Index[i]] << std::endl;
             low_cmd.motor_cmd()[i].tau() = (*(roller->joint_torques))[sdk_to_urdf_Index[i]];
             // Set position/velocity gains to zero for pure torque control
             low_cmd.motor_cmd()[i].q() = PosStopF;
@@ -437,6 +465,17 @@ void Custom::LowCmdWrite()
     }
 
     low_cmd.crc() = crc32_core((uint32_t *)&low_cmd, (sizeof(unitree_go::msg::dds_::LowCmd_) >> 2) - 1);
+
+     // Debug print
+        std::cout << "[DEBUG] Sending LowCmd: ";
+        for (int i = 0; i < H1_NUM_MOTOR; ++i) {
+        std::cout << "m" << i << "(" 
+              << low_cmd.motor_cmd()[i].q() << ","
+              << low_cmd.motor_cmd()[i].tau() << ") ";
+        }
+        std::cout << std::endl;
+
+
     lowcmd_publisher->Write(low_cmd);
 }
 

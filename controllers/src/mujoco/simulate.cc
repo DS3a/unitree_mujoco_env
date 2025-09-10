@@ -33,6 +33,7 @@
 #include <mujoco/mjvisualize.h>
 #include <mujoco/mjxmacro.h>
 #include <mujoco/mujoco.h>
+#include "../unitree_sdk2_bridge/unitree_sdk2_bridge.h"
 #include "platform_ui_adapter.h"
 #include "array_safety.h"
 
@@ -1241,7 +1242,7 @@ namespace
   }
 
   // millisecond timer, for MuJoCo built-in profiler
-  mjtNum Timer()
+  mjtNum SimulateTimer()
   {
     static auto start = mj::Simulate::Clock::now();
     auto elapsed = Milliseconds(mj::Simulate::Clock::now() - start);
@@ -2954,12 +2955,37 @@ namespace mujoco
 
     // finalize
     this->platform_ui->SwapBuffers();
+    std::cout << "positions : \n" << this->d_->qpos[0] << " \n"<< this->d_->qpos[1] << " \n"<< this->d_->qpos[2] << " \n" <<std::endl;
+    std::cout << "quaternions : \n" << this->d_->qpos[3] << " \n"<< this->d_->qpos[4] << " \n"<< this->d_->qpos[5] << this->d_->qpos[6] <<" \n" <<std::endl;
+    std::cout << "linear vel : \n" << this->d_->qvel[0] << " \n"<< this->d_->qvel[1] << " \n"<< this->d_->qvel[2]<<" \n" <<std::endl;
+    std::cout << "angular vel : \n" << this->d_->qvel[3] << " \n"<< this->d_->qvel[4] << " \n"<< this->d_->qvel[5]<<" \n" <<std::endl;
+
+    if (bridge_) {
+    // Example: send to Unitree bridge
+        bridge_->PublishLowStateGo();
+        std::cout << "published low state go \n"<<std::endl;
+
+    }else{
+      std::cout << "bridge_ is null \n"<<std::endl;
+    }
   }
+
+  void Simulate::InitializeBridge(mjModel* m, mjData* d) {
+    mjModel *m_ = m;
+    mjData *d_ = d;
+
+    ChannelFactory::Instance()->Init(1, "lo");
+
+    std::cout << "create simulation.cc Bridge \n";
+    std::cout << "m_ = " << m_ << ", d_ = " << d_ << std::endl;
+    bridge_ = std::make_unique<UnitreeSdk2Bridge>(m_, d_);
+    std::cout << "Bridge created \n";
+}
 
   void Simulate::RenderLoop()
   {
     // Set timer callback (milliseconds)
-    mjcb_time = Timer;
+    mjcb_time = SimulateTimer;
 
     // init abstract visualization
     mjv_defaultCamera(&this->cam);
@@ -3107,7 +3133,7 @@ namespace mujoco
           this->platform_ui->key_9_pressed_ = false;
         }
       }
-      
+
       // render while simulation is running
       this->Render();
 
