@@ -138,10 +138,18 @@ public:
         right_foot_constraint = std::make_shared<whole_body_roller::FrameAccelerationConstraint>(dynamics, "right_sole");
         right_foot_constraint->set_acceleration_target(Eigen::VectorXd::Zero(6)); // zero acceleration target
         roller->add_constraint(right_foot_constraint->constraint, right_foot_constraint);
+
+        right_foot_contact_force_constraint = std::make_shared<whole_body_roller::ContactForceConstraint>(dynamics, "right_foot");
+        roller->add_constraint(right_foot_contact_force_constraint->constraint, right_foot_contact_force_constraint);
+
         
-        //left_foot_constraint = std::make_shared<whole_body_roller::FrameAccelerationConstraint>(dynamics, "left_sole");
-        //left_foot_constraint->set_acceleration_target(Eigen::VectorXd::Zero(6)); // zero acceleration target
-        //roller->add_constraint(left_foot_constraint->constraint, left_foot_constraint);
+        left_foot_constraint = std::make_shared<whole_body_roller::FrameAccelerationConstraint>(dynamics, "left_sole");
+        left_foot_constraint->set_acceleration_target(Eigen::VectorXd::Zero(6)); // zero acceleration target
+        roller->add_constraint(left_foot_constraint->constraint, left_foot_constraint);
+
+        
+        left_foot_contact_force_constraint = std::make_shared<whole_body_roller::ContactForceConstraint>(dynamics, "left_foot");
+        roller->add_constraint(left_foot_contact_force_constraint->constraint, left_foot_contact_force_constraint);
         
         // Initialize additional constraint handlers for different tasks (here we only keep the double foot standing task)
         // Torso control - using "torso_link" from H1 URDF
@@ -152,6 +160,10 @@ public:
         //com_constraint = std::make_shared<whole_body_roller::FrameAccelerationConstraint>(dynamics, "pelvis");
         //roller->add_constraint(com_constraint->constraint, com_constraint);
         
+        //base constraint
+        base_constraint = std::make_shared<whole_body_roller::BaseAccelerationConstraint>(dynamics);
+        roller->add_constraint(base_constraint->constraint, base_constraint);
+
         // // Right arm control - using "right_elbow_link" for arm end-effector
         // right_arm_constraint = std::make_shared<whole_body_roller::FrameAccelerationConstraint>(dynamics, "right_elbow_link");
         // roller->add_constraint(right_arm_constraint->constraint, right_arm_constraint);
@@ -203,6 +215,27 @@ private:
                                      0.0,
                                      0.0, 0.0, 0.0, 0.0,
                                      0.0, 0.0, 0.0, 0.0};
+
+    double init_position[20] = {0.0349026,  // dummy positions at spawn that are close to actual positions (copied from mujoco)
+                                -0.125571,
+                                0.00129722,
+                                -0.260454,
+                                0.175271,
+                                -0.0272528,
+                                0.0600853,
+                                -0.00207564,
+                                -0.260529,
+                                0.178701,
+                                0.0399441,
+                                -0.0173038,
+                                -0.0144439,
+                                0.00738692,
+                                1.12133,
+                                -0.0144484,
+                                -0.00633407,
+                                -0.0111188,
+                                1.15938,
+                                0.0};                                     
     double dt = 0.002;
     unitree_go::msg::dds_::LowCmd_ low_cmd;     // default init
     unitree_go::msg::dds_::LowState_ low_state; // default init
@@ -226,10 +259,17 @@ private:
     std::shared_ptr<whole_body_roller::Roller> roller;
     std::shared_ptr<whole_body_roller::FrameAccelerationConstraint> right_foot_constraint;
     std::shared_ptr<whole_body_roller::FrameAccelerationConstraint> left_foot_constraint;
+
+    std::shared_ptr<whole_body_roller::ContactForceConstraint> right_foot_contact_force_constraint;
+    std::shared_ptr<whole_body_roller::ContactForceConstraint> left_foot_contact_force_constraint;
+
     
     // TODO: Additional constraint handlers for different tasks 
     std::shared_ptr<whole_body_roller::FrameAccelerationConstraint> torso_constraint;
     std::shared_ptr<whole_body_roller::FrameAccelerationConstraint> com_constraint;
+
+    std::shared_ptr<whole_body_roller::BaseAccelerationConstraint> base_constraint;
+
     std::shared_ptr<whole_body_roller::FrameAccelerationConstraint> right_arm_constraint;
     std::shared_ptr<whole_body_roller::FrameAccelerationConstraint> left_arm_constraint;
     
@@ -281,7 +321,6 @@ void Custom::Init()
 
     /*loop publishing thread*/
     lowCmdWriteThreadPtr = CreateRecurrentThreadEx("writebasiccmd", UT_CPU_ID_NONE, int(dt * 1000000), &Custom::LowCmdWrite, this);
-    
     // std::cout << "time, right_sh_yaw, left_sh_yaw\n";
 }
 
@@ -295,7 +334,7 @@ void Custom::InitLowCmd()
     for (int i = 0; i < H1_NUM_MOTOR; i++)
     {
         low_cmd.motor_cmd()[i].mode() = (0x01); // motor switch to servo (PMSM) mode
-        low_cmd.motor_cmd()[i].q() = (PosStopF);
+        low_cmd.motor_cmd()[i].q() = (PosStopF); 
         low_cmd.motor_cmd()[i].kp() = (0);
         low_cmd.motor_cmd()[i].dq() = (VelStopF);
         low_cmd.motor_cmd()[i].kd() = (0);
@@ -371,14 +410,14 @@ void Custom::LowCmdWrite()
         std::cout << "[H1 Controller] Waiting for WBC to initialize..." << std::endl;
         return;
     }
-    
-    auto base_pos = pose_estimator->getPosition();      // [x, y, z]
+     
+    auto base_pos = pose_estimator->getPosition(); //{0.00406105f, 0.00533113f, 1.04325f };//     // [x, y, z]
     std::cout << "Estimated pos: " << base_pos << std::endl;
-    auto base_quat = pose_estimator->getOrientation();  // [w, x, y, z]
+    auto base_quat = pose_estimator->getOrientation();  //{0.999882f, 0.00251998f, -0.0150318f, -0.00169463} [w, x, y, z]
     std::cout << "Estimated orientation: " << base_quat << std::endl;
-    auto base_lin_vel = pose_estimator->getLinearVelocity();  // [vx, vy, vz]
+    auto base_lin_vel = pose_estimator->getLinearVelocity();  // {-0.0217591f, 0.00722671f, -0.0046308f}; [vx, vy, vz]
     std::cout << "Estimated linVel: " << base_lin_vel << std::endl;
-    auto base_ang_vel = pose_estimator->getAngularVelocity(); // [wx, wy, wz]
+    auto base_ang_vel = pose_estimator->getAngularVelocity(); // {-0.000830367f, -0.105127f, 0.0129491f}; [wx, wy, wz]
     std::cout << "Estimated angVel: " << base_ang_vel << std::endl;
 
     // --- Step 4: Fill floating base states (first 7 elements for pose, next 6 for velocity) ---
@@ -404,7 +443,6 @@ void Custom::LowCmdWrite()
     // --- Step 5: Fill joint states (starting from index 7 for q, index 6 for dq) ---
     // Assuming first 27 joints are actuated, adjust as needed
     for (int i = 0; i < 19; ++i) {
-        std::cout << i+7 << std::endl;
         q[i + 7] = low_state.motor_state()[urdf_to_sdk_Index[i]].q();  // +7 for floating base (3 pos + 4 quat)
         dq[i + 6] = low_state.motor_state()[urdf_to_sdk_Index[i]].dq(); // +6 for floating base (3 lin vel + 3 ang vel)
     }
@@ -420,10 +458,10 @@ void Custom::LowCmdWrite()
     
     // --- Step 7: Set task-space goals (modify setpoints in constraint handlers) ---
     // Only keep the double foot standing (stationary feet) task
-    Eigen::VectorXd zero_acc = Eigen::VectorXd::Zero(6);
+    Eigen::VectorXd zero_acc = Eigen::VectorXd::Zero(6); //this has to be in world coordinates
     right_foot_constraint->set_acceleration_target(zero_acc);
     std::cout << "right foot constraints updated\n"; 
-    //left_foot_constraint->set_acceleration_target(zero_acc);
+    left_foot_constraint->set_acceleration_target(zero_acc);
     std::cout << "left foot constraints updated\n"; 
 
     std::cout << "updating constraints\n";    
@@ -446,7 +484,7 @@ void Custom::LowCmdWrite()
         std::cout << "dynamics->dec_v->ntau_: "<<  dynamics->dec_v->ntau_ << std::endl;
         //std::cout << "computed torques: "<<  roller->joint_torques << std::endl;
         for (int i = 0; i < dynamics->dec_v->ntau_; ++i) {
-            std::cout << "computed torque: "<<  (*(roller->joint_torques))[sdk_to_urdf_Index[i]] << std::endl;
+             std::cout << "computed torque: "<<  (*(roller->joint_torques))[sdk_to_urdf_Index[i]] << std::endl;
             low_cmd.motor_cmd()[i].tau() = (*(roller->joint_torques))[sdk_to_urdf_Index[i]];
             // Set position/velocity gains to zero for pure torque control
             low_cmd.motor_cmd()[i].q() = PosStopF;

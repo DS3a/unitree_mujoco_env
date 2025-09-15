@@ -527,6 +527,15 @@ void PhysicsThread(mj::Simulate *sim, const char *filename)
     sim->LoadMessage(filename);
     std::cout << "message loaded" << std::endl;
     m = LoadModel(filename, *sim);
+    
+    for (int i = 0; i < m->nu; i++) {
+    std::cout << "Actuator " << i 
+              << " type: " << m->actuator_biastype[i]   // 0 = direct torque
+              << " ctrlrange: [" << m->actuator_ctrlrange[2*i] 
+              << ", " << m->actuator_ctrlrange[2*i+1] << "]"
+              << std::endl;
+    }
+
     std::cout << "physics thread model"<< m << std::endl;
     if (m)
       d = mj_makeData(m);

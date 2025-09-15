@@ -1,4 +1,5 @@
 #include "unitree_sdk2_bridge.h"
+#include <helpers.hpp>
 
 UnitreeSdk2Bridge::UnitreeSdk2Bridge(mjModel *model, mjData *data) : mj_model_(model), mj_data_(data)
 {
@@ -83,12 +84,21 @@ void UnitreeSdk2Bridge::PublishLowStateGo()
 {
     if (mj_data_)
     {
+        /*
         for (int i = 0; i < num_motor_; i++)
         {
+            std::cout << " Pub Low Cmd Go" <<std::endl;
             low_state_go_.motor_state()[i].q() = mj_data_->sensordata[i];
             low_state_go_.motor_state()[i].dq() = mj_data_->sensordata[i + num_motor_];
             low_state_go_.motor_state()[i].tau_est() = mj_data_->sensordata[i + 2 * num_motor_];
+        }*/
+        for (int i = 0; i < num_motor_; i++) 
+        {
+            low_state_go_.motor_state()[i].q()  = mj_data_->qpos[i];        // Gelenkposition
+            low_state_go_.motor_state()[i].dq() = mj_data_->qvel[i];        // Gelenkgeschwindigkeit
+            low_state_go_.motor_state()[i].tau_est() = mj_data_->qfrc_actuator[i]; // geschätztes Tau
         }
+        
 
         if (have_frame_sensor_)
         {

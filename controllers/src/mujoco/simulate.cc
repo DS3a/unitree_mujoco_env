@@ -2956,7 +2956,17 @@ namespace mujoco
     // finalize
     this->platform_ui->SwapBuffers();
     std::cout << "positions : \n" << this->d_->qpos[0] << " \n"<< this->d_->qpos[1] << " \n"<< this->d_->qpos[2] << " \n" <<std::endl;
-    std::cout << "quaternions : \n" << this->d_->qpos[3] << " \n"<< this->d_->qpos[4] << " \n"<< this->d_->qpos[5] << this->d_->qpos[6] <<" \n" <<std::endl;
+    std::cout << "quaternions : \n" << this->d_->qpos[3] << " \n"<< this->d_->qpos[4] << " \n"<< this->d_->qpos[5] << this->d_->qpos[6] <<" \n" 
+                                   << this->d_->qpos[7] << " \n"<< this->d_->qpos[8] << " \n"<< this->d_->qpos[9] << " \n" 
+                                   << this->d_->qpos[10] << " \n"<< this->d_->qpos[11] << " \n"<< this->d_->qpos[12] << " \n" 
+                                   << this->d_->qpos[13] << " \n"<< this->d_->qpos[14] << " \n"<< this->d_->qpos[15] << " \n" 
+                                   << this->d_->qpos[16] << " \n"<< this->d_->qpos[17] << " \n"<< this->d_->qpos[18] << " \n" 
+                                   << this->d_->qpos[19] << " \n"<< this->d_->qpos[20] << " \n"<< this->d_->qpos[21] << " \n" 
+                                   << this->d_->qpos[22] << " \n"<< this->d_->qpos[23] << " \n"<< this->d_->qpos[24] << " \n" 
+                                  << this->d_->qpos[25] << " \n" <<std::endl;
+
+
+
     std::cout << "linear vel : \n" << this->d_->qvel[0] << " \n"<< this->d_->qvel[1] << " \n"<< this->d_->qvel[2]<<" \n" <<std::endl;
     std::cout << "angular vel : \n" << this->d_->qvel[3] << " \n"<< this->d_->qvel[4] << " \n"<< this->d_->qvel[5]<<" \n" <<std::endl;
 

@@ -37,7 +37,7 @@ public:
     UnitreePoseEstimator(float acc_alpha = 0.2f, float vel_alpha = 0.2f)
         : 
         // sub_("rt/low_state"),
-          position_{0.0f, 0.0f, 0.7f}, // should be {0.0f, 0.0f, 1.1f} at the start of simulation but when the robot drops down its at ca. 0.7
+          position_{0.0f, 0.0f, 1.0f}, // should be {0.0f, 0.0f, 1.1f} at the start of simulation but when the robot drops down its at ca. 0.7
           velocity_{0.0f, 0.0f, 0.0f},
           filtered_acc_{0.0f, 0.0f, 0.0f},
           filtered_vel_{0.0f, 0.0f, 0.0f},
